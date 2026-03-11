@@ -2,104 +2,167 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/*
+ * ============================================================
+ * DESIGN SYSTEM — Management Dashboard (Hebrew RTL)
+ * ============================================================
+ * All colors, spacing, shadows, and fonts are defined here.
+ * 
+ * TO CHANGE THE THEME:
+ *   - Update the color palette variables in :root below
+ *   - All colors must be HSL values
+ *   - Do NOT write colors directly in components
+ *
+ * TO ADD A NEW STATUS COLOR:
+ *   - Add --status-{name}-bg and --status-{name}-text
+ *   - Then add a CSS class .badge-{name} in the components section
+ * ============================================================
+ */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* ── Core Surfaces ── */
+    --background: 210 20% 98%;       /* App background: cool off-white */
+    --foreground: 222 47% 9%;        /* Primary text: deep slate */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;               /* Card/surface background */
+    --card-foreground: 222 47% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 47% 9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* ── Brand / Accent ── */
+    --primary: 217 91% 45%;          /* Blue accent */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 22%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 214 28% 95%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 214 28% 93%;
+    --accent-foreground: 222 47% 22%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 214 20% 91%;
+    --input: 214 20% 91%;
+    --ring: 217 91% 45%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* ── Sidebar ── */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 16% 35%;
+    --sidebar-primary: 217 91% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 28% 95%;
+    --sidebar-accent-foreground: 222 47% 22%;
+    --sidebar-border: 214 20% 91%;
+    --sidebar-ring: 217 91% 45%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* ── Status Colors ── */
+    --status-success-bg: 145 80% 92%;
+    --status-success-text: 145 70% 22%;
+    --status-warning-bg: 38 95% 92%;
+    --status-warning-text: 32 80% 28%;
+    --status-danger-bg: 0 90% 94%;
+    --status-danger-text: 0 72% 34%;
+    --status-info-bg: 210 90% 93%;
+    --status-info-text: 210 70% 30%;
+    --status-neutral-bg: 215 20% 93%;
+    --status-neutral-text: 215 20% 35%;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* ── Shadows (depth without harsh borders) ── */
+    --shadow-xs: 0 1px 2px rgba(15,23,42,0.04);
+    --shadow-sm: 0 0 0 1px rgba(15,23,42,0.04), 0 2px 6px -1px rgba(15,23,42,0.06);
+    --shadow-md: 0 0 0 1px rgba(15,23,42,0.04), 0 4px 12px -2px rgba(15,23,42,0.08);
+    --shadow-lg: 0 0 0 1px rgba(15,23,42,0.04), 0 8px 24px -4px rgba(15,23,42,0.12);
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* ── Spatial Scale ── */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
 
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* ── Motion ── */
+    --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --duration-fast: 150ms;
+    --duration-base: 250ms;
   }
 
+  /* Dark mode — not primary focus but tokens are defined */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 222 47% 7%;
+    --foreground: 210 30% 96%;
+    --card: 222 40% 10%;
+    --card-foreground: 210 30% 96%;
+    --popover: 222 40% 10%;
+    --popover-foreground: 210 30% 96%;
+    --primary: 217 80% 58%;
+    --primary-foreground: 222 47% 9%;
+    --secondary: 217 30% 18%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 217 30% 16%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 217 30% 16%;
+    --accent-foreground: 210 30% 96%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 30% 18%;
+    --input: 217 30% 18%;
+    --ring: 217 80% 58%;
+    --sidebar-background: 222 40% 10%;
+    --sidebar-foreground: 210 20% 70%;
+    --sidebar-primary: 217 80% 58%;
+    --sidebar-primary-foreground: 222 47% 9%;
+    --sidebar-accent: 217 30% 16%;
+    --sidebar-accent-foreground: 210 30% 96%;
+    --sidebar-border: 217 30% 16%;
+    --sidebar-ring: 217 80% 58%;
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    direction: rtl;
+    font-family: 'Assistant', 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     @apply bg-background text-foreground;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* RTL table alignment */
+  table {
+    direction: rtl;
+  }
+
+  /* Focus ring */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
+
+/* ── Google Fonts import ── */
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');

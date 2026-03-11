@@ -1,0 +1,161 @@
+/**
+ * src/types.ts
+ * ============
+ * TypeScript type definitions for all data models.
+ *
+ * ─── WHERE TO EDIT ────────────────────────────────────────────────────
+ * • To add a new field to Employees → add it here AND update:
+ *     1. Google Sheet column
+ *     2. src/api.ts fetchEmployees()
+ *     3. The UI table in modules/workforce/
+ * • To add a new module → add its types here and a new TabId value
+ * ─────────────────────────────────────────────────────────────────────
+ */
+
+// ── Navigation ───────────────────────────────────────────────────────
+// ADD NEW TAB HERE — add the string literal to TabId
+export type TabId =
+  | "dashboard"
+  | "food"
+  | "equipment"
+  | "vehicles"
+  | "workforce"
+  | "qualifications"
+  | "settings";
+
+// ── Employees ────────────────────────────────────────────────────────
+// UPDATE SHEET COLUMN MAP HERE — matches Employees sheet columns
+export interface Employee {
+  id: string;
+  name: string;
+  department: string;
+  status: "active" | "reserve" | "inactive"; // ADD NEW STATUS VALUES HERE
+  reserveStartDate?: string;  // ISO date string YYYY-MM-DD
+  reserveEndDate?: string;    // ISO date string YYYY-MM-DD
+  phone?: string;             // ADD NEW EMPLOYEE FIELDS HERE
+  role?: string;
+}
+
+// ── Departments ──────────────────────────────────────────────────────
+export interface Department {
+  id: string;
+  name: string;
+}
+
+// ── Vehicles ─────────────────────────────────────────────────────────
+// UPDATE SHEET COLUMN MAP HERE — matches Vehicles sheet columns
+export interface Vehicle {
+  plate: string;
+  status: "available" | "in_use" | "maintenance"; // ADD NEW VEHICLE STATUSES HERE
+  currentDriver?: string;
+  origin?: string;
+  destination?: string;
+  departureTime?: string;
+  notes?: string;             // ADD NEW VEHICLE FIELDS HERE
+}
+
+export interface VehicleTrip {
+  id: string;
+  plate: string;
+  driver: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  returnTime?: string;
+}
+
+// ── Equipment ────────────────────────────────────────────────────────
+// UPDATE SHEET COLUMN MAP HERE — matches Equipment_Catalog sheet columns
+export interface EquipmentType {
+  id: string;
+  name: string;
+  totalQuantity: number;
+}
+
+export interface EquipmentLedgerEntry {
+  id: string;
+  equipmentId: string;
+  equipmentName: string;
+  quantity: number;
+  issuedTo: string;
+  department: string;
+  issueDate: string;          // ISO date string
+  expectedReturnDate?: string;
+  returnDate?: string;
+  status: "issued" | "returned" | "overdue"; // ADD NEW EQUIPMENT STATUSES HERE
+}
+
+// ── Food ─────────────────────────────────────────────────────────────
+// UPDATE SHEET COLUMN MAP HERE — matches Food_Catalog sheet columns
+export interface FoodProduct {
+  id: string;
+  name: string;
+  category: string;           // ADD NEW FOOD CATEGORIES HERE
+}
+
+export interface FoodTransaction {
+  id: string;
+  date: string;               // ISO date string
+  type: "in" | "out";         // in = warehouse receipt, out = apartment delivery
+  productId: string;
+  productName: string;
+  quantity: number;
+  destination?: string;       // apartment name (for "out" type)
+}
+
+export interface FoodStock {
+  productId: string;
+  productName: string;
+  category: string;
+  warehouseQty: number;
+  unit: string;
+}
+
+// ── Apartments ───────────────────────────────────────────────────────
+export interface Apartment {
+  id: string;
+  name: string;
+  lastSupplied?: string;      // ISO date string
+}
+
+// ── Qualifications ───────────────────────────────────────────────────
+export interface Qualification {
+  id: string;
+  name: string;
+}
+
+export interface EmployeeQualification {
+  employeeId: string;
+  qualificationId: string;
+}
+
+// ── API Response ─────────────────────────────────────────────────────
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+export interface InitialData {
+  employees: Employee[];
+  departments: Department[];
+  vehicles: Vehicle[];
+  equipmentTypes: EquipmentType[];
+  equipmentLedger: EquipmentLedgerEntry[];
+  foodProducts: FoodProduct[];
+  foodTransactions: FoodTransaction[];
+  apartments: Apartment[];
+  qualifications: Qualification[];
+  employeeQualifications: EmployeeQualification[];
+}
+
+// ── UI Helpers ───────────────────────────────────────────────────────
+export type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral";
+
+export interface SummaryCard {
+  label: string;
+  value: string | number;
+  sub?: string;
+  variant?: BadgeVariant;
+  icon?: string;
+}
