@@ -4,18 +4,23 @@
  * Central configuration for the Management Dashboard.
  *
  * ─── WHERE TO CHANGE THINGS ───────────────────────────────────────────
- * • GOOGLE_APPS_SCRIPT_URL  → replace with your deployed GAS web app URL
+ * • VITE_GAS_URL            → set in .env.local or GitHub Actions secrets
+ * • VITE_BASE_PATH          → set to /operations-hub/ for GitHub Pages
+ * • VITE_USE_MOCK_DATA      → opt into demo mode explicitly
  * • TAB_LABELS              → add/rename navigation tabs here
  * • SHEET_NAMES             → update if you rename a Google Sheet tab
  * • ALERT_THRESHOLDS        → tune alert sensitivity here
  * ─────────────────────────────────────────────────────────────────────
  */
 
+const env = import.meta.env;
+
 // ── Google Apps Script ──────────────────────────────────────────────
-// ⚠️ REPLACE THIS with your deployed Apps Script Web App URL
-// How to get it: Apps Script → Deploy → Manage Deployments → Web App URL
-export const GOOGLE_APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec";
+// Set this in .env.local / GitHub Secrets as VITE_GAS_URL.
+export const GOOGLE_APPS_SCRIPT_URL = env.VITE_GAS_URL?.trim() ?? "";
+export const USE_MOCK_DATA = env.VITE_USE_MOCK_DATA === "true";
+export const GITHUB_PAGES_BASE_PATH = env.BASE_URL;
+export const IS_GAS_CONFIGURED = GOOGLE_APPS_SCRIPT_URL.length > 0;
 
 // ── Google Sheet Names ──────────────────────────────────────────────
 // UPDATE SHEET COLUMN MAP HERE — these must exactly match the tab names
@@ -67,6 +72,7 @@ export const ALERT_THRESHOLDS = {
 export const APP_META = {
   name: "מערכת ניהול תפעול",
   version: "1.0.0",
+  deploymentTarget: "GitHub Pages + Google Apps Script + Google Sheets",
   gasDocsUrl:
     "https://developers.google.com/apps-script/guides/web",
   sheetsDocsUrl:

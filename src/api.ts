@@ -6,26 +6,27 @@
  *
  * ─── WHERE TO EDIT ────────────────────────────────────────────────────
  * • To add a new API call → add a new async function below
- * • To change the GAS URL → update GOOGLE_APPS_SCRIPT_URL in config.ts
+ * • To change the GAS URL → update VITE_GAS_URL in .env.local / GitHub secrets
  * • All functions return typed promises so TypeScript catches mismatches
  * ─────────────────────────────────────────────────────────────────────
  */
 
-import { GOOGLE_APPS_SCRIPT_URL } from "./config";
+import { GOOGLE_APPS_SCRIPT_URL, IS_GAS_CONFIGURED, USE_MOCK_DATA } from "./config";
 import { InitialData, ApiResponse } from "./types";
 import { MOCK_DATA } from "./mockData";
-
-// ── Use mock data when GAS URL is not configured ─────────────────────
-const IS_MOCK_MODE =
-  GOOGLE_APPS_SCRIPT_URL.includes("YOUR_SCRIPT_ID_HERE");
+import { normalizeInitialData } from "./data/normalize";
 
 // ── GET: fetch all initial data in one request ────────────────────────
 // This single call loads everything so the UI feels instant.
 // In the GAS backend, getInitialData() bundles all sheets.
 export async function fetchInitialData(): Promise<InitialData | null> {
-  if (IS_MOCK_MODE) {
-    // Return mock data during development / demo
-    return MOCK_DATA;
+  if (USE_MOCK_DATA) {
+    return normalizeInitialData(MOCK_DATA);
+  }
+
+  if (!IS_GAS_CONFIGURED) {
+    console.error("[API] VITE_GAS_URL is not configured.");
+    return null;
   }
 
   try {
@@ -33,9 +34,12 @@ export async function fetchInitialData(): Promise<InitialData | null> {
       `${GOOGLE_APPS_SCRIPT_URL}?action=getInitialData`,
       { redirect: "follow" }
     );
-    const json: ApiResponse<InitialData> = await response.json();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const json: ApiResponse<unknown> = await response.json();
     if (!json.success) throw new Error(json.error);
-    return json.data ?? null;
+    return json.data ? normalizeInitialData(json.data) : null;
   } catch (err) {
     console.error("[API] fetchInitialData failed:", err);
     return null;
@@ -49,9 +53,14 @@ export async function postAction<T = boolean>(
   action: string,
   payload: Record<string, unknown>
 ): Promise<T | null> {
-  if (IS_MOCK_MODE) {
+  if (USE_MOCK_DATA) {
     console.log(`[MOCK] postAction: ${action}`, payload);
     return true as unknown as T;
+  }
+
+  if (!IS_GAS_CONFIGURED) {
+    console.error(`[API] postAction(${action}) skipped because VITE_GAS_URL is not configured.`);
+    return null;
   }
 
   try {
@@ -62,6 +71,9 @@ export async function postAction<T = boolean>(
       body: JSON.stringify({ action, ...payload }),
       redirect: "follow",
     });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     const json: ApiResponse<T> = await response.json();
     if (!json.success) throw new Error(json.error);
     return json.data ?? (true as unknown as T);

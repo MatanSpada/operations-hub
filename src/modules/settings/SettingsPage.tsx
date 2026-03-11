@@ -7,14 +7,30 @@
 import React from "react";
 import { InitialData } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { APP_META, GOOGLE_APPS_SCRIPT_URL, SHEET_NAMES } from "@/config";
+import {
+  APP_META,
+  GITHUB_PAGES_BASE_PATH,
+  GOOGLE_APPS_SCRIPT_URL,
+  IS_GAS_CONFIGURED,
+  SHEET_NAMES,
+  USE_MOCK_DATA,
+} from "@/config";
 import { Settings, Database, Link, Info } from "lucide-react";
 
 interface Props { data: InitialData; }
 
 export const SettingsPage: React.FC<Props> = ({ data }) => {
   const { departments, apartments, qualifications } = data;
-  const isConnected = !GOOGLE_APPS_SCRIPT_URL.includes("YOUR_SCRIPT_ID_HERE");
+  const connectionLabel = USE_MOCK_DATA
+    ? "מצב דמו מפורש"
+    : IS_GAS_CONFIGURED
+      ? "מחובר"
+      : "לא מוגדר";
+  const connectionClassName = USE_MOCK_DATA
+    ? "bg-status-warning-bg text-status-warning-text"
+    : IS_GAS_CONFIGURED
+      ? "bg-status-success-bg text-status-success-text"
+      : "bg-status-danger-bg text-status-danger-text";
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -23,15 +39,25 @@ export const SettingsPage: React.FC<Props> = ({ data }) => {
       {/* Connection Status */}
       <section className="bg-card rounded-lg shadow-card p-6 space-y-3">
         <h3 className="font-semibold text-foreground flex items-center gap-2"><Link size={16} /> חיבור Google Apps Script</h3>
-        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold ${isConnected ? "bg-status-success-bg text-status-success-text" : "bg-status-warning-bg text-status-warning-text"}`}>
-          {isConnected ? "✓ מחובר" : "⚠ לא מוגדר — מצב הדגמה"}
+        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold ${connectionClassName}`}>
+          {connectionLabel}
         </div>
-        {!isConnected && (
+        {!IS_GAS_CONFIGURED && !USE_MOCK_DATA && (
           <p className="text-sm text-muted-foreground">
-            כדי לחבר נתונים אמיתיים: עדכן את <code className="bg-muted px-1 rounded text-xs">GOOGLE_APPS_SCRIPT_URL</code> בקובץ <code className="bg-muted px-1 rounded text-xs">src/config.ts</code>
+            כדי לחבר נתונים אמיתיים: הגדר <code className="bg-muted px-1 rounded text-xs">VITE_GAS_URL</code> בקובץ <code className="bg-muted px-1 rounded text-xs">.env.local</code> או ב-GitHub Secrets.
           </p>
         )}
-        <p className="text-xs text-muted-foreground font-mono break-all">{GOOGLE_APPS_SCRIPT_URL}</p>
+        {USE_MOCK_DATA && (
+          <p className="text-sm text-muted-foreground">
+            הממשק נטען מ-<code className="bg-muted px-1 rounded text-xs">src/mockData.ts</code> כי <code className="bg-muted px-1 rounded text-xs">VITE_USE_MOCK_DATA=true</code>.
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground font-mono break-all">
+          {GOOGLE_APPS_SCRIPT_URL || "VITE_GAS_URL is empty"}
+        </p>
+        <p className="text-xs text-muted-foreground font-mono break-all">
+          BASE_URL: {GITHUB_PAGES_BASE_PATH}
+        </p>
       </section>
 
       {/* Sheet Names Map */}
@@ -88,7 +114,7 @@ export const SettingsPage: React.FC<Props> = ({ data }) => {
       {/* App info */}
       <section className="bg-card rounded-lg shadow-card p-5 flex items-center gap-3 text-sm text-muted-foreground">
         <Info size={16} />
-        <span>{APP_META.name} — גרסה {APP_META.version}</span>
+        <span>{APP_META.name} — גרסה {APP_META.version} — {APP_META.deploymentTarget}</span>
       </section>
     </div>
   );

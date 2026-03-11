@@ -100,6 +100,7 @@ export interface FoodTransaction {
   productId: string;
   productName: string;
   quantity: number;
+  destinationApartmentId?: string;
   destination?: string;       // apartment name (for "out" type)
 }
 

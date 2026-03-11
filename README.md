@@ -1,73 +1,78 @@
-# Welcome to your Lovable project
+# Operations Hub
 
-## Project info
+`operations-hub` is a static React/Vite management dashboard intended to run on GitHub Pages and use Google Apps Script + Google Sheets as its backend and persistence layer.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Current architecture
 
-## How can I edit this code?
+- Frontend: React 18 + TypeScript + Vite + Tailwind, built as a static site.
+- Hosting: GitHub Pages via [`.github/workflows/deploy-pages.yml`](/home/matan/Documents/operations-hub/.github/workflows/deploy-pages.yml).
+- Backend: Google Apps Script web app from [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs).
+- Data store: Google Sheets tabs listed in [`src/config.ts`](/home/matan/Documents/operations-hub/src/config.ts).
 
-There are several ways of editing your application.
+## Domain model
 
-**Use Lovable**
+The frontend currently operates on one aggregated `InitialData` payload defined in [`src/types.ts`](/home/matan/Documents/operations-hub/src/types.ts):
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- `employees`
+- `departments`
+- `vehicles`
+- `equipmentTypes`
+- `equipmentLedger`
+- `foodProducts`
+- `foodTransactions`
+- `apartments`
+- `qualifications`
+- `employeeQualifications`
 
-Changes made via Lovable will be committed automatically to this repo.
+`vehicleTrips` exists in the Apps Script backend for audit/history writes, but the current UI does not render it yet.
 
-**Use your preferred IDE**
+## Runtime configuration
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+The frontend uses Vite environment variables instead of hardcoded deployment URLs:
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. Copy [`.env.example`](/home/matan/Documents/operations-hub/.env.example) to `.env.local`.
+2. Set `VITE_GAS_URL` to the deployed Apps Script web app URL.
+3. Keep `VITE_BASE_PATH=/operations-hub/` for GitHub Pages project-site deployment.
+4. Use `VITE_USE_MOCK_DATA=true` only for explicit local demo/testing.
 
-Follow these steps:
+The production GitHub Pages workflow expects a repository secret named `VITE_GAS_URL`.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Local development
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm ci
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Useful commands:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+npm run build
+npm run test
+npm run lint
+```
 
-**Use GitHub Codespaces**
+## Data flow
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- The app shell in [`src/pages/Index.tsx`](/home/matan/Documents/operations-hub/src/pages/Index.tsx) calls `fetchInitialData()`.
+- [`src/api.ts`](/home/matan/Documents/operations-hub/src/api.ts) fetches the Apps Script payload and normalizes it.
+- [`src/data/normalize.ts`](/home/matan/Documents/operations-hub/src/data/normalize.ts) converts raw sheet rows or camelCase objects into the typed frontend contract.
+- Module pages derive their own summaries/tables from the in-memory `InitialData` object.
 
-## What technologies are used for this project?
+## Google Apps Script / Sheets setup
 
-This project is built with:
+1. Create a Google Sheet with the tabs listed in [`src/config.ts`](/home/matan/Documents/operations-hub/src/config.ts).
+2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs).
+3. Paste [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs) into the Apps Script editor attached to the spreadsheet.
+4. Deploy as a Web App:
+   1. Execute as: `Me`
+   2. Who has access: `Anyone`
+5. Put the deployment URL into `VITE_GAS_URL`.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## GitHub Pages deployment
 
-## How can I deploy this project?
+The repo now includes an Actions workflow for GitHub Pages. Enable Pages in the repository settings with:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+- Source: `GitHub Actions`
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+After that, pushes to `main` will build and deploy `dist/`.

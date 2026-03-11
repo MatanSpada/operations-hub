@@ -33,7 +33,11 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
   const apartmentSupply = useMemo(() =>
     apartments.map((apt) => {
       const lastTx = foodTransactions
-        .filter((t) => t.type === "out" && t.destination === apt.name)
+        .filter(
+          (t) =>
+            t.type === "out" &&
+            (t.destinationApartmentId === apt.id || t.destination === apt.name)
+        )
         .sort((a, b) => b.date.localeCompare(a.date))[0];
       return { ...apt, lastSupplied: lastTx?.date ?? apt.lastSupplied };
     }),

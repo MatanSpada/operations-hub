@@ -1,263 +1,503 @@
 /**
- * apps-script/Code.gs
- * ====================
- * Google Apps Script backend for the Management Dashboard.
- * Paste this into your Apps Script editor (Extensions > Apps Script).
+ * src/apps-script/Code.gs
+ * =======================
+ * Google Apps Script backend for the Operations Hub dashboard.
  *
- * SETUP:
- * 1. Open your Google Sheet → Extensions → Apps Script
- * 2. Delete the default code and paste this entire file
- * 3. Click Deploy → New Deployment → Web App
- *    - Execute as: Me
- *    - Who has access: Anyone
- * 4. Copy the Web App URL into src/config.ts → GOOGLE_APPS_SCRIPT_URL
- *
- * ADD NEW GET ACTION: add a case in doGet() and a helper function below
- * ADD NEW POST ACTION: add a case in doPost() and a helper function below
- * ADD NEW SHEET: add the sheet to Google Sheets, then add a helper here
+ * Recommended sheet headers:
+ * Departments: ID, Name
+ * Employees: ID, Name, Department, Status, ReserveStartDate, ReserveEndDate, Phone, Role
+ * Vehicles: Plate, Status, CurrentDriver, Origin, Destination, DepartureTime, Notes
+ * Vehicle_Trips: ID, Plate, Driver, Origin, Destination, DepartureTime, ReturnTime
+ * Equipment_Catalog: ID, Name, TotalQuantity
+ * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
+ * Food_Catalog: ID, Name, Category
+ * Food_Transactions: ID, Date, Type, ProductID, ProductName, Quantity, DestinationApartmentId, DestinationName
+ * Apartments: ID, Name, LastSupplied
+ * Qualifications: ID, Name
+ * Employee_Qualifications: EmployeeID, QualificationID
  */
 
-// ── Sheet name constants — UPDATE THESE if you rename a sheet tab ────
 const SHEETS = {
-  EMPLOYEES:               "Employees",
-  DEPARTMENTS:             "Departments",
-  VEHICLES:                "Vehicles",
-  VEHICLE_TRIPS:           "Vehicle_Trips",
-  EQUIPMENT_CATALOG:       "Equipment_Catalog",
-  EQUIPMENT_LEDGER:        "Equipment_Ledger",
-  FOOD_CATALOG:            "Food_Catalog",
-  FOOD_TRANSACTIONS:       "Food_Transactions",
-  APARTMENTS:              "Apartments",
-  QUALIFICATIONS:          "Qualifications",
+  EMPLOYEES: "Employees",
+  DEPARTMENTS: "Departments",
+  VEHICLES: "Vehicles",
+  VEHICLE_TRIPS: "Vehicle_Trips",
+  EQUIPMENT_CATALOG: "Equipment_Catalog",
+  EQUIPMENT_LEDGER: "Equipment_Ledger",
+  FOOD_CATALOG: "Food_Catalog",
+  FOOD_TRANSACTIONS: "Food_Transactions",
+  APARTMENTS: "Apartments",
+  QUALIFICATIONS: "Qualifications",
   EMPLOYEE_QUALIFICATIONS: "Employee_Qualifications",
 };
 
-// ── GET Endpoint ─────────────────────────────────────────────────────
 function doGet(e) {
-  const action = e.parameter.action;
+  const action = e && e.parameter ? e.parameter.action : "";
+
   try {
     if (action === "getInitialData") {
-      return jsonResponse({
+      return jsonResponse_({
         success: true,
-        data: {
-          employees:               mapRows(SHEETS.EMPLOYEES),
-          departments:             mapRows(SHEETS.DEPARTMENTS),
-          vehicles:                mapRows(SHEETS.VEHICLES),
-          equipmentTypes:          mapRows(SHEETS.EQUIPMENT_CATALOG),
-          equipmentLedger:         mapRows(SHEETS.EQUIPMENT_LEDGER),
-          foodProducts:            mapRows(SHEETS.FOOD_CATALOG),
-          foodTransactions:        mapRows(SHEETS.FOOD_TRANSACTIONS),
-          apartments:              mapRows(SHEETS.APARTMENTS),
-          qualifications:          mapRows(SHEETS.QUALIFICATIONS),
-          employeeQualifications:  mapRows(SHEETS.EMPLOYEE_QUALIFICATIONS),
-        }
+        data: buildInitialData_(),
       });
     }
-    return jsonResponse({ success: false, error: "Unknown action: " + action });
+
+    return jsonResponse_({ success: false, error: "Unknown action: " + action });
   } catch (err) {
-    return jsonResponse({ success: false, error: err.toString() });
+    return jsonResponse_({ success: false, error: String(err) });
   }
 }
 
-// ── POST Endpoint ─────────────────────────────────────────────────────
-// ADD NEW POST ACTIONS HERE ↓
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents);
+    const payload = JSON.parse(e.postData.contents || "{}");
     const action = payload.action;
 
     if (action === "checkoutVehicle") {
-      updateRow(SHEETS.VEHICLES, "Plate", payload.plate, {
+      updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, {
         Status: "in_use",
         CurrentDriver: payload.driver,
         Origin: payload.origin,
         Destination: payload.destination,
         DepartureTime: payload.departureTime,
       });
-      appendRow(SHEETS.VEHICLE_TRIPS, {
-        ID: generateId(),
+      appendRow_(SHEETS.VEHICLE_TRIPS, {
+        ID: generateId_(),
         Plate: payload.plate,
         Driver: payload.driver,
         Origin: payload.origin,
         Destination: payload.destination,
         DepartureTime: payload.departureTime,
+        ReturnTime: "",
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "returnVehicle") {
-      updateRow(SHEETS.VEHICLES, "Plate", payload.plate, {
+      updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, {
         Status: "available",
         CurrentDriver: "",
         Origin: "",
         Destination: "",
         DepartureTime: "",
       });
-      return jsonResponse({ success: true });
+      closeLatestVehicleTrip_(payload.plate);
+      return jsonResponse_({ success: true });
     }
 
     if (action === "updateVehicleStatus") {
-      updateRow(SHEETS.VEHICLES, "Plate", payload.plate, { Status: payload.status });
-      return jsonResponse({ success: true });
+      updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, { Status: payload.status });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "issueEquipment") {
-      appendRow(SHEETS.EQUIPMENT_LEDGER, {
-        ID: generateId(),
+      appendRow_(SHEETS.EQUIPMENT_LEDGER, {
+        ID: generateId_(),
         EquipmentID: payload.equipmentId,
-        Quantity: payload.quantity,
+        EquipmentName: getEquipmentName_(payload.equipmentId),
+        Quantity: Number(payload.quantity || 0),
         IssuedTo: payload.issuedTo,
         Department: payload.department,
-        IssueDate: new Date().toISOString().split("T")[0],
+        IssueDate: todayIso_(),
         ExpectedReturnDate: payload.expectedReturnDate || "",
         ReturnDate: "",
         Status: "issued",
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "returnEquipment") {
-      updateRow(SHEETS.EQUIPMENT_LEDGER, "ID", payload.ledgerId, {
+      updateRow_(SHEETS.EQUIPMENT_LEDGER, "ID", payload.ledgerId, {
         Status: "returned",
-        ReturnDate: new Date().toISOString().split("T")[0],
+        ReturnDate: todayIso_(),
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "addFoodShipment") {
-      appendRow(SHEETS.FOOD_TRANSACTIONS, {
-        ID: generateId(),
-        Date: new Date().toISOString().split("T")[0],
+      appendRow_(SHEETS.FOOD_TRANSACTIONS, {
+        ID: generateId_(),
+        Date: todayIso_(),
         Type: "in",
         ProductID: payload.productId,
-        Quantity: payload.quantity,
-        Destination: "",
+        ProductName: getFoodProductName_(payload.productId),
+        Quantity: Number(payload.quantity || 0),
+        DestinationApartmentId: "",
+        DestinationName: "",
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "supplyApartment") {
-      appendRow(SHEETS.FOOD_TRANSACTIONS, {
-        ID: generateId(),
-        Date: new Date().toISOString().split("T")[0],
+      const apartment = getApartment_(payload.apartmentId);
+      appendRow_(SHEETS.FOOD_TRANSACTIONS, {
+        ID: generateId_(),
+        Date: todayIso_(),
         Type: "out",
         ProductID: payload.productId,
-        Quantity: payload.quantity,
-        Destination: payload.apartmentId,
+        ProductName: getFoodProductName_(payload.productId),
+        Quantity: Number(payload.quantity || 0),
+        DestinationApartmentId: payload.apartmentId,
+        DestinationName: apartment ? apartment.name : "",
       });
-      updateRow(SHEETS.APARTMENTS, "ID", payload.apartmentId, {
-        LastSupplied: new Date().toISOString().split("T")[0],
+      updateRow_(SHEETS.APARTMENTS, "ID", payload.apartmentId, {
+        LastSupplied: todayIso_(),
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "addReserveDuty") {
-      updateRow(SHEETS.EMPLOYEES, "ID", payload.employeeId, {
+      updateRow_(SHEETS.EMPLOYEES, "ID", payload.employeeId, {
         Status: "reserve",
         ReserveStartDate: payload.startDate,
         ReserveEndDate: payload.endDate,
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "endReserveDuty") {
-      updateRow(SHEETS.EMPLOYEES, "ID", payload.employeeId, {
+      updateRow_(SHEETS.EMPLOYEES, "ID", payload.employeeId, {
         Status: "active",
         ReserveStartDate: "",
         ReserveEndDate: "",
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "assignQualification") {
-      appendRow(SHEETS.EMPLOYEE_QUALIFICATIONS, {
+      appendRow_(SHEETS.EMPLOYEE_QUALIFICATIONS, {
         EmployeeID: payload.employeeId,
         QualificationID: payload.qualificationId,
       });
-      return jsonResponse({ success: true });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "removeQualification") {
-      deleteRow(SHEETS.EMPLOYEE_QUALIFICATIONS, "EmployeeID", payload.employeeId,
-        (row) => row["QualificationID"] === payload.qualificationId);
-      return jsonResponse({ success: true });
+      deleteRow_(
+        SHEETS.EMPLOYEE_QUALIFICATIONS,
+        "EmployeeID",
+        payload.employeeId,
+        function (row) {
+          return stringValue_(row.QualificationID) === String(payload.qualificationId);
+        }
+      );
+      return jsonResponse_({ success: true });
     }
 
-    // ADD NEW POST ACTIONS ABOVE THIS LINE ↑
-    return jsonResponse({ success: false, error: "Unknown action: " + action });
+    return jsonResponse_({ success: false, error: "Unknown action: " + action });
   } catch (err) {
-    return jsonResponse({ success: false, error: err.toString() });
+    return jsonResponse_({ success: false, error: String(err) });
   }
 }
 
-// ── Helper: Read all rows from a sheet as array of objects ───────────
-function mapRows(sheetName) {
+function buildInitialData_() {
+  const departmentsRows = getRows_(SHEETS.DEPARTMENTS);
+  const employeesRows = getRows_(SHEETS.EMPLOYEES);
+  const vehiclesRows = getRows_(SHEETS.VEHICLES);
+  const equipmentTypeRows = getRows_(SHEETS.EQUIPMENT_CATALOG);
+  const equipmentLedgerRows = getRows_(SHEETS.EQUIPMENT_LEDGER);
+  const foodProductRows = getRows_(SHEETS.FOOD_CATALOG);
+  const foodTransactionRows = getRows_(SHEETS.FOOD_TRANSACTIONS);
+  const apartmentsRows = getRows_(SHEETS.APARTMENTS);
+  const qualificationRows = getRows_(SHEETS.QUALIFICATIONS);
+  const employeeQualificationRows = getRows_(SHEETS.EMPLOYEE_QUALIFICATIONS);
+
+  const equipmentNameById = indexByField_(equipmentTypeRows, "ID", "Name");
+  const productNameById = indexByField_(foodProductRows, "ID", "Name");
+  const apartmentNameById = indexByField_(apartmentsRows, "ID", "Name");
+
+  return {
+    departments: departmentsRows.map(normalizeDepartment_),
+    employees: employeesRows.map(normalizeEmployee_),
+    vehicles: vehiclesRows.map(normalizeVehicle_),
+    equipmentTypes: equipmentTypeRows.map(normalizeEquipmentType_),
+    equipmentLedger: equipmentLedgerRows.map(function (row) {
+      return normalizeEquipmentLedger_(row, equipmentNameById);
+    }),
+    foodProducts: foodProductRows.map(normalizeFoodProduct_),
+    foodTransactions: foodTransactionRows.map(function (row) {
+      return normalizeFoodTransaction_(row, productNameById, apartmentNameById);
+    }),
+    apartments: apartmentsRows.map(normalizeApartment_),
+    qualifications: qualificationRows.map(normalizeQualification_),
+    employeeQualifications: employeeQualificationRows.map(normalizeEmployeeQualification_),
+  };
+}
+
+function normalizeDepartment_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+  };
+}
+
+function normalizeEmployee_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+    department: stringValue_(row.Department),
+    status: stringValue_(row.Status) || "active",
+    reserveStartDate: optionalString_(row.ReserveStartDate),
+    reserveEndDate: optionalString_(row.ReserveEndDate),
+    phone: optionalString_(row.Phone),
+    role: optionalString_(row.Role),
+  };
+}
+
+function normalizeVehicle_(row) {
+  return {
+    plate: stringValue_(row.Plate),
+    status: stringValue_(row.Status) || "available",
+    currentDriver: optionalString_(row.CurrentDriver),
+    origin: optionalString_(row.Origin),
+    destination: optionalString_(row.Destination),
+    departureTime: optionalString_(row.DepartureTime),
+    notes: optionalString_(row.Notes),
+  };
+}
+
+function normalizeEquipmentType_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+    totalQuantity: numberValue_(row.TotalQuantity),
+  };
+}
+
+function normalizeEquipmentLedger_(row, equipmentNameById) {
+  const equipmentId = stringValue_(row.EquipmentID);
+
+  return {
+    id: stringValue_(row.ID),
+    equipmentId: equipmentId,
+    equipmentName: stringValue_(row.EquipmentName) || equipmentNameById[equipmentId] || equipmentId,
+    quantity: numberValue_(row.Quantity),
+    issuedTo: stringValue_(row.IssuedTo),
+    department: stringValue_(row.Department),
+    issueDate: stringValue_(row.IssueDate),
+    expectedReturnDate: optionalString_(row.ExpectedReturnDate),
+    returnDate: optionalString_(row.ReturnDate),
+    status: stringValue_(row.Status) || "issued",
+  };
+}
+
+function normalizeFoodProduct_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+    category: stringValue_(row.Category),
+  };
+}
+
+function normalizeFoodTransaction_(row, productNameById, apartmentNameById) {
+  const productId = stringValue_(row.ProductID);
+  const destinationApartmentId = optionalString_(row.DestinationApartmentId);
+
+  return {
+    id: stringValue_(row.ID),
+    date: stringValue_(row.Date),
+    type: stringValue_(row.Type) === "out" ? "out" : "in",
+    productId: productId,
+    productName: stringValue_(row.ProductName) || productNameById[productId] || productId,
+    quantity: numberValue_(row.Quantity),
+    destinationApartmentId: destinationApartmentId,
+    destination:
+      optionalString_(row.DestinationName) ||
+      optionalString_(row.Destination) ||
+      (destinationApartmentId ? apartmentNameById[destinationApartmentId] : ""),
+  };
+}
+
+function normalizeApartment_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+    lastSupplied: optionalString_(row.LastSupplied),
+  };
+}
+
+function normalizeQualification_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+  };
+}
+
+function normalizeEmployeeQualification_(row) {
+  return {
+    employeeId: stringValue_(row.EmployeeID),
+    qualificationId: stringValue_(row.QualificationID),
+  };
+}
+
+function getRows_(sheetName) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-  const headers = data[0];
-  return data.slice(1).map(row => {
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i]; });
-    return obj;
+
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  const headers = values[0];
+  return values.slice(1).map(function (row) {
+    const item = {};
+    headers.forEach(function (header, index) {
+      item[header] = row[index];
+    });
+    return item;
   });
 }
 
-// ── Helper: Append a new row ─────────────────────────────────────────
-function appendRow(sheetName, obj) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) throw new Error("Sheet not found: " + sheetName);
+function appendRow_(sheetName, record) {
+  const sheet = getSheet_(sheetName);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const row = headers.map(h => obj[h] !== undefined ? obj[h] : "");
+  const row = headers.map(function (header) {
+    return record[header] !== undefined ? record[header] : "";
+  });
   sheet.appendRow(row);
 }
 
-// ── Helper: Update matching row ──────────────────────────────────────
-function updateRow(sheetName, keyCol, keyVal, updates) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) throw new Error("Sheet not found: " + sheetName);
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const keyIdx = headers.indexOf(keyCol);
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][keyIdx]) === String(keyVal)) {
-      Object.keys(updates).forEach(k => {
-        const ci = headers.indexOf(k);
-        if (ci > -1) sheet.getRange(i + 1, ci + 1).setValue(updates[k]);
+function updateRow_(sheetName, keyColumn, keyValue, updates) {
+  const sheet = getSheet_(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return false;
+
+  const headers = values[0];
+  const keyIndex = headers.indexOf(keyColumn);
+  if (keyIndex === -1) {
+    throw new Error("Column not found: " + keyColumn + " in " + sheetName);
+  }
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    if (String(values[rowIndex][keyIndex]) === String(keyValue)) {
+      Object.keys(updates).forEach(function (columnName) {
+        const columnIndex = headers.indexOf(columnName);
+        if (columnIndex !== -1) {
+          sheet.getRange(rowIndex + 1, columnIndex + 1).setValue(updates[columnName]);
+        }
       });
       return true;
     }
   }
+
   return false;
 }
 
-// ── Helper: Delete a matching row ───────────────────────────────────
-function deleteRow(sheetName, keyCol, keyVal, extraFilter) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return;
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const keyIdx = headers.indexOf(keyCol);
-  for (let i = data.length - 1; i >= 1; i--) {
-    if (String(data[i][keyIdx]) === String(keyVal)) {
-      const rowObj = {};
-      headers.forEach((h, j) => { rowObj[h] = data[i][j]; });
-      if (!extraFilter || extraFilter(rowObj)) {
-        sheet.deleteRow(i + 1);
+function deleteRow_(sheetName, keyColumn, keyValue, extraFilter) {
+  const sheet = getSheet_(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return;
+
+  const headers = values[0];
+  const keyIndex = headers.indexOf(keyColumn);
+
+  for (var rowIndex = values.length - 1; rowIndex >= 1; rowIndex--) {
+    if (String(values[rowIndex][keyIndex]) === String(keyValue)) {
+      const rowObject = {};
+      headers.forEach(function (header, index) {
+        rowObject[header] = values[rowIndex][index];
+      });
+      if (!extraFilter || extraFilter(rowObject)) {
+        sheet.deleteRow(rowIndex + 1);
       }
     }
   }
 }
 
-// ── Helper: Generate simple unique ID ────────────────────────────────
-function generateId() {
+function closeLatestVehicleTrip_(plate) {
+  const sheet = getSheet_(SHEETS.VEHICLE_TRIPS);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+
+  const headers = values[0];
+  const plateIndex = headers.indexOf("Plate");
+  const returnTimeIndex = headers.indexOf("ReturnTime");
+
+  if (plateIndex === -1 || returnTimeIndex === -1) return;
+
+  for (var rowIndex = values.length - 1; rowIndex >= 1; rowIndex--) {
+    if (
+      String(values[rowIndex][plateIndex]) === String(plate) &&
+      !String(values[rowIndex][returnTimeIndex] || "").trim()
+    ) {
+      sheet.getRange(rowIndex + 1, returnTimeIndex + 1).setValue(new Date().toISOString());
+      return;
+    }
+  }
+}
+
+function getEquipmentName_(equipmentId) {
+  return findValueById_(SHEETS.EQUIPMENT_CATALOG, equipmentId, "Name") || String(equipmentId);
+}
+
+function getFoodProductName_(productId) {
+  return findValueById_(SHEETS.FOOD_CATALOG, productId, "Name") || String(productId);
+}
+
+function getApartment_(apartmentId) {
+  const rows = getRows_(SHEETS.APARTMENTS);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(apartmentId)) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+      };
+    }
+  }
+  return null;
+}
+
+function findValueById_(sheetName, id, columnName) {
+  const rows = getRows_(sheetName);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(id)) {
+      return rows[index][columnName];
+    }
+  }
+  return "";
+}
+
+function indexByField_(rows, keyField, valueField) {
+  const output = {};
+  rows.forEach(function (row) {
+    const key = String(row[keyField] || "");
+    if (key) {
+      output[key] = String(row[valueField] || "");
+    }
+  });
+  return output;
+}
+
+function stringValue_(value) {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function optionalString_(value) {
+  const result = stringValue_(value);
+  return result ? result : undefined;
+}
+
+function numberValue_(value) {
+  if (typeof value === "number") return value;
+  const parsed = Number(value);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function todayIso_() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function generateId_() {
   return Utilities.getUuid();
 }
 
-// ── Helper: Wrap response as JSON ────────────────────────────────────
-function jsonResponse(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+function getSheet_(sheetName) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) throw new Error("Sheet not found: " + sheetName);
+  return sheet;
+}
+
+function jsonResponse_(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(
+    ContentService.MimeType.JSON
+  );
 }
