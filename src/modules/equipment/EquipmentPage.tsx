@@ -25,9 +25,11 @@ import {
   isEquipmentOverdue,
 } from "@/utils";
 import { api } from "@/api";
-import { Zap, AlertTriangle, Plus } from "lucide-react";
+import { Zap, AlertTriangle, Plus, ArrowRightLeft } from "lucide-react";
 
 interface Props { data: InitialData; onRefresh: () => void; }
+
+type EquipmentActionMode = "set_quantity" | "issue_item";
 
 function formatEquipmentCreateError(error?: string): string {
   if (!error) return "שמירת הפריט נכשלה";
@@ -37,10 +39,36 @@ function formatEquipmentCreateError(error?: string): string {
   return error;
 }
 
+function formatEquipmentActionError(error?: string): string {
+  if (!error) return "הפעולה נכשלה";
+  if (error.startsWith("Unknown action: setEquipmentStock")) {
+    return "ה-endpoint המחובר ב-Google Apps Script לא מכיל עדיין את setEquipmentStock. יש לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה או לפרוס מחדש את ה-Web App.";
+  }
+  if (error === "Not enough available equipment to issue") {
+    return "אין מספיק פריטים זמינים להנפקה";
+  }
+  if (error === "Total quantity cannot be lower than currently issued quantity") {
+    return "לא ניתן לעדכן כמות כוללת הנמוכה ממספר הפריטים שכבר מונפקים";
+  }
+  if (error === "Invalid equipment quantity") {
+    return "יש להזין כמות חוקית להנפקה";
+  }
+  if (error === "Invalid total quantity") {
+    return "יש להזין כמות כוללת חוקית";
+  }
+  if (error === "Equipment not found") {
+    return "הפריט שנבחר לא נמצא";
+  }
+  return error;
+}
+
 export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const { equipmentTypes, equipmentLedger, departments } = data;
   const [selectedType, setSelectedType] = useState<EquipmentType | null>(null);
-  const [issueModal, setIssueModal] = useState<EquipmentType | null>(null);
+  const [actionItem, setActionItem] = useState<(EquipmentType & { available: number; issued: number }) | null>(null);
+  const [actionMode, setActionMode] = useState<EquipmentActionMode>("set_quantity");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -48,7 +76,10 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     name: "",
     totalQuantity: "0",
   });
-  const [form, setForm] = useState({
+  const [stockForm, setStockForm] = useState({
+    quantity: "",
+  });
+  const [issueForm, setIssueForm] = useState({
     quantity: 1,
     issuedTo: "",
     department: "",
@@ -77,18 +108,86 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     );
   }, [selectedType, equipmentLedger]);
 
-  const handleIssue = async () => {
-    if (!issueModal) return;
-    await api.issueEquipment({
-      equipmentId: issueModal.id,
-      quantity: form.quantity,
-      issuedTo: form.issuedTo,
-      department: form.department,
-      expectedReturnDate: form.expectedReturnDate || undefined,
+  const resetActionModal = () => {
+    setActionItem(null);
+    setActionMode("set_quantity");
+    setActionError(null);
+    setStockForm({ quantity: "" });
+    setIssueForm({ quantity: 1, issuedTo: "", department: "", expectedReturnDate: "" });
+  };
+
+  const openActionModal = (item: EquipmentType & { available: number; issued: number }) => {
+    setActionItem(item);
+    setActionMode("set_quantity");
+    setActionError(null);
+    setStockForm({ quantity: String(item.totalQuantity) });
+    setIssueForm({
+      quantity: item.available > 0 ? 1 : 0,
+      issuedTo: "",
+      department: departments[0]?.name ?? "",
+      expectedReturnDate: "",
     });
-    setIssueModal(null);
-    setForm({ quantity: 1, issuedTo: "", department: "", expectedReturnDate: "" });
-    onRefresh();
+  };
+
+  const handleEquipmentAction = async () => {
+    if (!actionItem) return;
+
+    setIsSubmittingAction(true);
+    setActionError(null);
+
+    if (actionMode === "set_quantity") {
+      const nextQuantity = Number(stockForm.quantity);
+
+      if (Number.isNaN(nextQuantity) || nextQuantity < 0) {
+        setActionError("יש להזין כמות חוקית");
+        setIsSubmittingAction(false);
+        return;
+      }
+
+      const result = await api.setEquipmentStockDetailed(actionItem.id, nextQuantity);
+      if (!result.data) {
+        setActionError(formatEquipmentActionError(result.error || "עדכון הכמות נכשל"));
+        setIsSubmittingAction(false);
+        return;
+      }
+    }
+
+    if (actionMode === "issue_item") {
+      const issueQuantity = Number(issueForm.quantity);
+      if (Number.isNaN(issueQuantity) || issueQuantity <= 0) {
+        setActionError("יש להזין כמות חוקית להנפקה");
+        setIsSubmittingAction(false);
+        return;
+      }
+      if (issueQuantity > actionItem.available) {
+        setActionError("אין מספיק פריטים זמינים להנפקה");
+        setIsSubmittingAction(false);
+        return;
+      }
+      if (!issueForm.issuedTo.trim()) {
+        setActionError("יש להזין למי הפריט מונפק");
+        setIsSubmittingAction(false);
+        return;
+      }
+
+      const result = await api.issueEquipmentDetailed({
+        equipmentId: actionItem.id,
+        quantity: issueQuantity,
+        issuedTo: issueForm.issuedTo.trim(),
+        department: issueForm.department,
+        expectedReturnDate: issueForm.expectedReturnDate || undefined,
+      });
+
+      if (!result.data) {
+        setActionError(formatEquipmentActionError(result.error || "הנפקת הפריט נכשלה"));
+        setIsSubmittingAction(false);
+        return;
+      }
+    }
+
+    await onRefresh();
+    setIsSubmittingAction(false);
+    resetActionModal();
   };
 
   const handleReturn = async (ledgerId: string) => {
@@ -255,10 +354,14 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   <td className="px-4 py-3 tabular-nums">{t.issued}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setIssueModal(t); }}
-                      className="text-xs text-primary hover:underline font-medium"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openActionModal(t);
+                      }}
+                      className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80"
                     >
-                      הוצא
+                      <ArrowRightLeft size={14} />
+                      פעולה
                     </button>
                   </td>
                 </tr>
@@ -285,21 +388,89 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         />
       </section>
 
-      {/* Issue Equipment Modal */}
       <Modal
-        open={!!issueModal}
-        onClose={() => setIssueModal(null)}
-        title={`הוצאת ציוד — ${issueModal?.name}`}
+        open={!!actionItem}
+        onClose={resetActionModal}
+        title={`פעולה — ${actionItem?.name}`}
       >
         <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                setActionMode("set_quantity");
+                setActionError(null);
+              }}
+              className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                actionMode === "set_quantity"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              הזן כמות חדשה
+            </button>
+            <button
+              onClick={() => {
+                setActionMode("issue_item");
+                setActionError(null);
+              }}
+              className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                actionMode === "issue_item"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              נפק פריט
+            </button>
+          </div>
+
+          {actionMode === "set_quantity" && (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg bg-muted/40 px-4 py-3">
+                  <div className="text-xs text-muted-foreground">כמות כוללת נוכחית</div>
+                  <div className="text-lg font-semibold tabular-nums">{actionItem?.totalQuantity ?? 0}</div>
+                </div>
+                <div className="rounded-lg bg-muted/40 px-4 py-3">
+                  <div className="text-xs text-muted-foreground">מונפק כעת</div>
+                  <div className="text-lg font-semibold tabular-nums">{actionItem?.issued ?? 0}</div>
+                </div>
+                <div className="rounded-lg bg-muted/40 px-4 py-3">
+                  <div className="text-xs text-muted-foreground">זמין כרגע</div>
+                  <div className="text-lg font-semibold tabular-nums">{actionItem?.available ?? 0}</div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">כמות חדשה במלאי</label>
+                <input
+                  type="number"
+                  min={actionItem?.issued ?? 0}
+                  step={1}
+                  value={stockForm.quantity}
+                  onChange={(e) => setStockForm({ quantity: e.target.value })}
+                  className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  הכמות נשמרת בקטלוג הציוד הכולל, ולכן לא ניתן לרדת מתחת ל-{actionItem?.issued ?? 0} פריטים שכבר מונפקים.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {actionMode === "issue_item" && (
+            <>
+              <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                זמינים כעת להנפקה: <span className="font-semibold text-foreground tabular-nums">{actionItem?.available ?? 0}</span>
+              </div>
+
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">כמות</label>
             <input
               type="number"
               min={1}
-              max={issueModal?.totalQuantity}
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
+              max={actionItem?.available || 1}
+              value={issueForm.quantity}
+              onChange={(e) => setIssueForm({ ...issueForm, quantity: Number(e.target.value) })}
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -307,8 +478,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             <label className="text-sm font-medium">מושאל ל</label>
             <input
               type="text"
-              value={form.issuedTo}
-              onChange={(e) => setForm({ ...form, issuedTo: e.target.value })}
+              value={issueForm.issuedTo}
+              onChange={(e) => setIssueForm({ ...issueForm, issuedTo: e.target.value })}
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               dir="rtl"
             />
@@ -316,8 +487,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">מחלקה</label>
             <select
-              value={form.department}
-              onChange={(e) => setForm({ ...form, department: e.target.value })}
+              value={issueForm.department}
+              onChange={(e) => setIssueForm({ ...issueForm, department: e.target.value })}
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               dir="rtl"
             >
@@ -329,20 +500,32 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             <label className="text-sm font-medium">תאריך החזרה צפוי (אופציונלי)</label>
             <input
               type="date"
-              value={form.expectedReturnDate}
-              onChange={(e) => setForm({ ...form, expectedReturnDate: e.target.value })}
+              value={issueForm.expectedReturnDate}
+              onChange={(e) => setIssueForm({ ...issueForm, expectedReturnDate: e.target.value })}
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+            </>
+          )}
+
+          {actionError && (
+            <p className="text-sm text-status-danger-text">{actionError}</p>
+          )}
+
           <div className="flex gap-3 mt-2">
             <button
-              onClick={handleIssue}
-              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+              onClick={handleEquipmentAction}
+              disabled={isSubmittingAction}
+              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
             >
-              אשר הוצאה
+              {isSubmittingAction
+                ? "שומר..."
+                : actionMode === "set_quantity"
+                  ? "שמור כמות"
+                  : "אשר הנפקה"}
             </button>
             <button
-              onClick={() => setIssueModal(null)}
+              onClick={resetActionModal}
               className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
             >
               ביטול

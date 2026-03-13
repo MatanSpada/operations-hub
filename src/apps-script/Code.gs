@@ -116,11 +116,28 @@ function doPost(e) {
     }
 
     if (action === "issueEquipment") {
+      const equipmentId = String(payload.equipmentId || "").trim();
+      const quantity = Number(payload.quantity || 0);
+      const equipment = getEquipmentTypeById_(equipmentId);
+
+      if (!equipmentId) {
+        throw new Error("Missing equipment ID");
+      }
+      if (!equipment) {
+        throw new Error("Equipment not found");
+      }
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error("Invalid equipment quantity");
+      }
+      if (getAvailableEquipmentQuantity_(equipmentId) < quantity) {
+        throw new Error("Not enough available equipment to issue");
+      }
+
       appendRow_(SHEETS.EQUIPMENT_LEDGER, {
         ID: generateId_(),
-        EquipmentID: payload.equipmentId,
-        EquipmentName: getEquipmentName_(payload.equipmentId),
-        Quantity: Number(payload.quantity || 0),
+        EquipmentID: equipmentId,
+        EquipmentName: equipment.name,
+        Quantity: quantity,
         IssuedTo: payload.issuedTo,
         Department: payload.department,
         IssueDate: todayIso_(),
@@ -156,6 +173,32 @@ function doPost(e) {
         success: true,
         data: { equipmentId: equipmentId },
       });
+    }
+
+    if (action === "setEquipmentStock") {
+      const equipmentId = String(payload.equipmentId || "").trim();
+      const targetQuantity = Number(payload.quantity);
+      const equipment = getEquipmentTypeById_(equipmentId);
+
+      if (!equipmentId) {
+        throw new Error("Missing equipment ID");
+      }
+      if (!equipment) {
+        throw new Error("Equipment not found");
+      }
+      if (isNaN(targetQuantity) || targetQuantity < 0) {
+        throw new Error("Invalid total quantity");
+      }
+
+      const issuedQuantity = getIssuedEquipmentQuantity_(equipmentId);
+      if (targetQuantity < issuedQuantity) {
+        throw new Error("Total quantity cannot be lower than currently issued quantity");
+      }
+
+      updateRow_(SHEETS.EQUIPMENT_CATALOG, "ID", equipmentId, {
+        TotalQuantity: targetQuantity,
+      });
+      return jsonResponse_({ success: true });
     }
 
     if (action === "returnEquipment") {
@@ -719,6 +762,20 @@ function getEquipmentName_(equipmentId) {
   return findValueById_(SHEETS.EQUIPMENT_CATALOG, equipmentId, "Name") || String(equipmentId);
 }
 
+function getEquipmentTypeById_(equipmentId) {
+  const rows = getRows_(SHEETS.EQUIPMENT_CATALOG);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(equipmentId)) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+        totalQuantity: numberValue_(rows[index].TotalQuantity),
+      };
+    }
+  }
+  return null;
+}
+
 function getDepartmentNameById_(departmentId) {
   const department = getDepartmentById_(departmentId);
   return department ? department.name : "";
@@ -784,6 +841,25 @@ function employeeExists_(employeeName) {
 
 function equipmentTypeExists_(equipmentName) {
   return nameExistsInSheet_(SHEETS.EQUIPMENT_CATALOG, "Name", equipmentName);
+}
+
+function getIssuedEquipmentQuantity_(equipmentId) {
+  return getRows_(SHEETS.EQUIPMENT_LEDGER).reduce(function (sum, row) {
+    if (
+      String(row.EquipmentID) !== String(equipmentId) ||
+      String(row.Status) === "returned"
+    ) {
+      return sum;
+    }
+
+    return sum + numberValue_(row.Quantity);
+  }, 0);
+}
+
+function getAvailableEquipmentQuantity_(equipmentId) {
+  const equipment = getEquipmentTypeById_(equipmentId);
+  if (!equipment) return 0;
+  return Math.max(0, equipment.totalQuantity - getIssuedEquipmentQuantity_(equipmentId));
 }
 
 function foodProductExists_(productName) {

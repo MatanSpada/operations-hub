@@ -143,6 +143,14 @@ export const api = {
     expectedReturnDate?: string;
   }) => postAction("issueEquipment", data),
 
+  issueEquipmentDetailed: (data: {
+    equipmentId: string;
+    quantity: number;
+    issuedTo: string;
+    department: string;
+    expectedReturnDate?: string;
+  }) => postActionDetailed("issueEquipment", data),
+
   createEquipmentType: (data: {
     name: string;
     totalQuantity: number;
@@ -155,6 +163,12 @@ export const api = {
 
   returnEquipment: (ledgerId: string) =>
     postAction("returnEquipment", { ledgerId }),
+
+  setEquipmentStock: (equipmentId: string, quantity: number) =>
+    postAction("setEquipmentStock", { equipmentId, quantity }),
+
+  setEquipmentStockDetailed: (equipmentId: string, quantity: number) =>
+    postActionDetailed("setEquipmentStock", { equipmentId, quantity }),
 
   // Food actions
   createFoodProduct: (data: {
