@@ -49,7 +49,7 @@ export default function Index() {
       case "vehicles":      return <VehiclesPage data={data} onRefresh={load} />;
       case "workforce":     return <WorkforcePage data={data} />;
       case "qualifications":return <QualificationsPage data={data} />;
-      case "settings":      return <SettingsPage data={data} />;
+      case "settings":      return <SettingsPage data={data} onRefresh={load} />;
       default:              return null;
     }
   };

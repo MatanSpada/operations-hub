@@ -160,14 +160,21 @@ export const api = {
   createFoodProduct: (data: {
     name: string;
     category: string;
+    departmentId?: string;
+    department?: string;
     initialQuantity?: number;
   }) => postAction<{ productId: string }>("createFoodProduct", data),
 
   createFoodProductDetailed: (data: {
     name: string;
     category: string;
+    departmentId?: string;
+    department?: string;
     initialQuantity?: number;
   }) => postActionDetailed<{ productId: string }>("createFoodProduct", data),
+
+  deleteFoodProductDetailed: (productId: string) =>
+    postActionDetailed("deleteFoodProduct", { productId }),
 
   addFoodShipment: (productId: string, quantity: number) =>
     postAction("addFoodShipment", { productId, quantity }),
@@ -183,6 +190,36 @@ export const api = {
 
   supplyApartmentDetailed: (apartmentId: string, productId: string, quantity: number) =>
     postActionDetailed("supplyApartment", { apartmentId, productId, quantity }),
+
+  createDepartmentDetailed: (name: string) =>
+    postActionDetailed<{ departmentId: string }>("createDepartment", { name }),
+
+  deleteDepartmentDetailed: (departmentId: string) =>
+    postActionDetailed("deleteDepartment", { departmentId }),
+
+  createQualificationDetailed: (name: string) =>
+    postActionDetailed<{ qualificationId: string }>("createQualification", { name }),
+
+  deleteQualificationDetailed: (qualificationId: string) =>
+    postActionDetailed("deleteQualification", { qualificationId }),
+
+  createVehicleDetailed: (data: {
+    plate: string;
+    notes?: string;
+  }) => postActionDetailed<{ plate: string }>("createVehicle", data),
+
+  deleteVehicleDetailed: (plate: string) =>
+    postActionDetailed("deleteVehicle", { plate }),
+
+  createEmployeeDetailed: (data: {
+    name: string;
+    departmentId: string;
+    role?: string;
+    phone?: string;
+  }) => postActionDetailed<{ employeeId: string }>("createEmployee", data),
+
+  deleteEmployeeDetailed: (employeeId: string) =>
+    postActionDetailed("deleteEmployee", { employeeId }),
 
   // Workforce actions
   addReserveDuty: (data: {

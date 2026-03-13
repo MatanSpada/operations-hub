@@ -89,6 +89,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
     id: readString(row, ["id", "ID"]),
     name: readString(row, ["name", "Name"]),
     category: readString(row, ["category", "Category"]),
+    department: readOptionalString(row, ["department", "Department"]),
   }));
 
   const qualifications: Qualification[] = asRows(source.qualifications).map((row) => ({

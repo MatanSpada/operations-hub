@@ -10,7 +10,7 @@
  * Vehicle_Trips: ID, Plate, Driver, Origin, Destination, DepartureTime, ReturnTime
  * Equipment_Catalog: ID, Name, TotalQuantity
  * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
- * Food_Catalog: ID, Name, Category
+ * Food_Catalog: ID, Name, Category, Department
  * Food_Transactions: ID, Date, Type, ProductID, ProductName, Quantity, DestinationApartmentId, DestinationName
  * Apartments: ID, Name, LastSupplied
  * Qualifications: ID, Name
@@ -52,6 +52,31 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents || "{}");
     const action = payload.action;
+
+    if (action === "createDepartment") {
+      return createDepartment_(payload);
+    }
+    if (action === "deleteDepartment") {
+      return deleteDepartment_(payload);
+    }
+    if (action === "createQualification") {
+      return createQualification_(payload);
+    }
+    if (action === "deleteQualification") {
+      return deleteQualification_(payload);
+    }
+    if (action === "createVehicle") {
+      return createVehicle_(payload);
+    }
+    if (action === "deleteVehicle") {
+      return deleteVehicle_(payload);
+    }
+    if (action === "createEmployee") {
+      return createEmployee_(payload);
+    }
+    if (action === "deleteEmployee") {
+      return deleteEmployee_(payload);
+    }
 
     if (action === "checkoutVehicle") {
       updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, {
@@ -159,6 +184,9 @@ function doPost(e) {
       const productId = generateId_();
       const productName = String(payload.name || "").trim();
       const category = String(payload.category || "").trim();
+      const department =
+        getDepartmentNameById_(payload.departmentId) ||
+        String(payload.department || "").trim();
       const initialQuantity = Number(payload.initialQuantity || 0);
 
       if (!productName || !category) {
@@ -167,11 +195,15 @@ function doPost(e) {
       if (isNaN(initialQuantity) || initialQuantity < 0) {
         throw new Error("Invalid initial quantity");
       }
+      if (foodProductExists_(productName)) {
+        throw new Error("Food product already exists");
+      }
 
       appendRow_(SHEETS.FOOD_CATALOG, {
         ID: productId,
         Name: productName,
         Category: category,
+        Department: department,
       });
 
       if (initialQuantity > 0) {
@@ -184,6 +216,19 @@ function doPost(e) {
         success: true,
         data: { productId: productId },
       });
+    }
+
+    if (action === "deleteFoodProduct") {
+      const productId = String(payload.productId || "").trim();
+      if (!productId) {
+        throw new Error("Missing product ID");
+      }
+      if (foodProductHasTransactions_(productId)) {
+        throw new Error("Cannot delete product with inventory history");
+      }
+
+      deleteRow_(SHEETS.FOOD_CATALOG, "ID", productId);
+      return jsonResponse_({ success: true });
     }
 
     if (action === "setFoodStock") {
@@ -224,7 +269,7 @@ function doPost(e) {
         throw new Error("Not enough stock for apartment supply");
       }
 
-      appendFoodTransaction_(payload.productId, "out", Number(payload.quantity || 0), {
+      appendFoodTransaction_(payload.productId, "out", quantity, {
         destinationApartmentId: payload.apartmentId,
         destinationName: apartment ? apartment.name : "",
       });
@@ -276,6 +321,162 @@ function doPost(e) {
   } catch (err) {
     return jsonResponse_({ success: false, error: String(err) });
   }
+}
+
+function createDepartment_(payload) {
+  const departmentId = generateId_();
+  const departmentName = String(payload.name || "").trim();
+
+  if (!departmentName) {
+    throw new Error("Missing department name");
+  }
+  if (departmentExists_(departmentName)) {
+    throw new Error("Department already exists");
+  }
+
+  appendRow_(SHEETS.DEPARTMENTS, {
+    ID: departmentId,
+    Name: departmentName,
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { departmentId: departmentId },
+  });
+}
+
+function deleteDepartment_(payload) {
+  const department = getDepartmentById_(payload.departmentId);
+  if (!department) {
+    throw new Error("Department not found");
+  }
+
+  const dependencyError = getDepartmentDeleteError_(department.name);
+  if (dependencyError) {
+    throw new Error(dependencyError);
+  }
+
+  deleteRow_(SHEETS.DEPARTMENTS, "ID", payload.departmentId);
+  return jsonResponse_({ success: true });
+}
+
+function createQualification_(payload) {
+  const qualificationId = generateId_();
+  const qualificationName = String(payload.name || "").trim();
+
+  if (!qualificationName) {
+    throw new Error("Missing qualification name");
+  }
+  if (qualificationExists_(qualificationName)) {
+    throw new Error("Qualification already exists");
+  }
+
+  appendRow_(SHEETS.QUALIFICATIONS, {
+    ID: qualificationId,
+    Name: qualificationName,
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { qualificationId: qualificationId },
+  });
+}
+
+function deleteQualification_(payload) {
+  deleteRow_(SHEETS.EMPLOYEE_QUALIFICATIONS, "QualificationID", payload.qualificationId);
+  deleteRow_(SHEETS.QUALIFICATIONS, "ID", payload.qualificationId);
+  return jsonResponse_({ success: true });
+}
+
+function createVehicle_(payload) {
+  const plate = String(payload.plate || "").trim();
+
+  if (!plate) {
+    throw new Error("Missing vehicle plate");
+  }
+  if (vehicleExists_(plate)) {
+    throw new Error("Vehicle already exists");
+  }
+
+  appendRow_(SHEETS.VEHICLES, {
+    Plate: plate,
+    Status: "available",
+    CurrentDriver: "",
+    Origin: "",
+    Destination: "",
+    DepartureTime: "",
+    Notes: payload.notes || "",
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { plate: plate },
+  });
+}
+
+function deleteVehicle_(payload) {
+  const vehicle = getVehicleByPlate_(payload.plate);
+  if (!vehicle) {
+    throw new Error("Vehicle not found");
+  }
+  if (String(vehicle.Status) === "in_use") {
+    throw new Error("Cannot delete a vehicle that is currently in use");
+  }
+  if (vehicleHasOpenTrip_(payload.plate)) {
+    throw new Error("Cannot delete a vehicle with an open trip");
+  }
+
+  deleteRow_(SHEETS.VEHICLES, "Plate", payload.plate);
+  return jsonResponse_({ success: true });
+}
+
+function createEmployee_(payload) {
+  const employeeId = generateId_();
+  const employeeName = String(payload.name || "").trim();
+  const department = getDepartmentById_(payload.departmentId);
+
+  if (!employeeName) {
+    throw new Error("Missing employee name");
+  }
+  if (!department) {
+    throw new Error("Department not found");
+  }
+  if (employeeExists_(employeeName)) {
+    throw new Error("Employee already exists");
+  }
+
+  appendRow_(SHEETS.EMPLOYEES, {
+    ID: employeeId,
+    Name: employeeName,
+    Department: department.name,
+    Status: "active",
+    ReserveStartDate: "",
+    ReserveEndDate: "",
+    Phone: payload.phone || "",
+    Role: payload.role || "",
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { employeeId: employeeId },
+  });
+}
+
+function deleteEmployee_(payload) {
+  const employee = getEmployeeById_(payload.employeeId);
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+  if (employeeHasActiveEquipmentLoans_(employee.name)) {
+    throw new Error("Cannot delete employee with active equipment loans");
+  }
+  if (employeeDrivesActiveVehicle_(employee.name)) {
+    throw new Error("Cannot delete employee assigned to an active vehicle");
+  }
+
+  deleteRow_(SHEETS.EMPLOYEE_QUALIFICATIONS, "EmployeeID", payload.employeeId);
+  deleteRow_(SHEETS.EMPLOYEES, "ID", payload.employeeId);
+  return jsonResponse_({ success: true });
 }
 
 function buildInitialData_() {
@@ -374,6 +575,7 @@ function normalizeFoodProduct_(row) {
     id: stringValue_(row.ID),
     name: stringValue_(row.Name),
     category: stringValue_(row.Category),
+    department: optionalString_(row.Department),
   };
 }
 
@@ -517,12 +719,83 @@ function getEquipmentName_(equipmentId) {
   return findValueById_(SHEETS.EQUIPMENT_CATALOG, equipmentId, "Name") || String(equipmentId);
 }
 
+function getDepartmentNameById_(departmentId) {
+  const department = getDepartmentById_(departmentId);
+  return department ? department.name : "";
+}
+
+function getDepartmentById_(departmentId) {
+  const rows = getRows_(SHEETS.DEPARTMENTS);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(departmentId)) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+      };
+    }
+  }
+  return null;
+}
+
+function getEmployeeById_(employeeId) {
+  const rows = getRows_(SHEETS.EMPLOYEES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(employeeId)) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+      };
+    }
+  }
+  return null;
+}
+
+function getVehicleByPlate_(plate) {
+  const rows = getRows_(SHEETS.VEHICLES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].Plate) === String(plate)) {
+      return rows[index];
+    }
+  }
+  return null;
+}
+
+function departmentExists_(departmentName) {
+  return nameExistsInSheet_(SHEETS.DEPARTMENTS, "Name", departmentName);
+}
+
+function qualificationExists_(qualificationName) {
+  return nameExistsInSheet_(SHEETS.QUALIFICATIONS, "Name", qualificationName);
+}
+
+function vehicleExists_(plate) {
+  const rows = getRows_(SHEETS.VEHICLES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].Plate || "").trim() === String(plate).trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function employeeExists_(employeeName) {
+  return nameExistsInSheet_(SHEETS.EMPLOYEES, "Name", employeeName);
+}
+
 function equipmentTypeExists_(equipmentName) {
-  const normalizedName = String(equipmentName || "").trim().toLowerCase();
-  const rows = getRows_(SHEETS.EQUIPMENT_CATALOG);
+  return nameExistsInSheet_(SHEETS.EQUIPMENT_CATALOG, "Name", equipmentName);
+}
+
+function foodProductExists_(productName) {
+  return nameExistsInSheet_(SHEETS.FOOD_CATALOG, "Name", productName);
+}
+
+function nameExistsInSheet_(sheetName, columnName, name) {
+  const normalizedName = String(name || "").trim().toLowerCase();
+  const rows = getRows_(sheetName);
 
   for (var index = 0; index < rows.length; index++) {
-    if (String(rows[index].Name || "").trim().toLowerCase() === normalizedName) {
+    if (String(rows[index][columnName] || "").trim().toLowerCase() === normalizedName) {
       return true;
     }
   }
@@ -543,6 +816,83 @@ function getFoodStock_(productId) {
     const quantity = numberValue_(row.Quantity);
     return sum + (String(row.Type) === "out" ? -quantity : quantity);
   }, 0);
+}
+
+function getDepartmentDeleteError_(departmentName) {
+  const employees = getRows_(SHEETS.EMPLOYEES);
+  for (var employeeIndex = 0; employeeIndex < employees.length; employeeIndex++) {
+    if (String(employees[employeeIndex].Department) === String(departmentName)) {
+      return "Cannot delete department assigned to employees";
+    }
+  }
+
+  const equipmentLedger = getRows_(SHEETS.EQUIPMENT_LEDGER);
+  for (var ledgerIndex = 0; ledgerIndex < equipmentLedger.length; ledgerIndex++) {
+    if (
+      String(equipmentLedger[ledgerIndex].Department) === String(departmentName) &&
+      String(equipmentLedger[ledgerIndex].Status) !== "returned"
+    ) {
+      return "Cannot delete department used by active equipment issues";
+    }
+  }
+
+  const foodCatalog = getRows_(SHEETS.FOOD_CATALOG);
+  for (var productIndex = 0; productIndex < foodCatalog.length; productIndex++) {
+    if (String(foodCatalog[productIndex].Department || "") === String(departmentName)) {
+      return "Cannot delete department assigned to products";
+    }
+  }
+
+  return "";
+}
+
+function employeeHasActiveEquipmentLoans_(employeeName) {
+  const rows = getRows_(SHEETS.EQUIPMENT_LEDGER);
+  for (var index = 0; index < rows.length; index++) {
+    if (
+      String(rows[index].IssuedTo) === String(employeeName) &&
+      String(rows[index].Status) !== "returned"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function employeeDrivesActiveVehicle_(employeeName) {
+  const rows = getRows_(SHEETS.VEHICLES);
+  for (var index = 0; index < rows.length; index++) {
+    if (
+      String(rows[index].CurrentDriver) === String(employeeName) &&
+      String(rows[index].Status) === "in_use"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function vehicleHasOpenTrip_(plate) {
+  const rows = getRows_(SHEETS.VEHICLE_TRIPS);
+  for (var index = rows.length - 1; index >= 0; index--) {
+    if (
+      String(rows[index].Plate) === String(plate) &&
+      !String(rows[index].ReturnTime || "").trim()
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function foodProductHasTransactions_(productId) {
+  const rows = getRows_(SHEETS.FOOD_TRANSACTIONS);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ProductID) === String(productId)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function appendFoodTransaction_(productId, type, quantity, options) {

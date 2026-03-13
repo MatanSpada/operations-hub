@@ -49,7 +49,7 @@ export const TAB_LABELS: Record<string, string> = {
   vehicles: "רכבים",
   workforce: "כוח אדם ומילואים",
   qualifications: "הכשרות",
-  settings: "הגדרות",
+  settings: "ניהול נתונים",
 };
 
 // ── Alert Thresholds ────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import {
   Truck,
   Users,
   Award,
-  Settings,
+  Database,
 } from "lucide-react";
 import { TabId } from "@/types";
 import { APP_META } from "@/config";
@@ -32,7 +32,7 @@ const NAV_ITEMS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "vehicles", label: "רכבים", icon: <Truck size={18} /> },
   { id: "workforce", label: "כוח אדם ומילואים", icon: <Users size={18} /> },
   { id: "qualifications", label: "הכשרות", icon: <Award size={18} /> },
-  { id: "settings", label: "הגדרות", icon: <Settings size={18} /> },
+  { id: "settings", label: "ניהול נתונים", icon: <Database size={18} /> },
 ];
 
 interface SidebarProps {

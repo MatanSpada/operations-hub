@@ -91,6 +91,7 @@ export interface FoodProduct {
   id: string;
   name: string;
   category: string;           // ADD NEW FOOD CATEGORIES HERE
+  department?: string;
 }
 
 export interface FoodTransaction {
