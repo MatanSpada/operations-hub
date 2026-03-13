@@ -77,7 +77,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
   const departments: Department[] = asRows(source.departments).map((row) => ({
     id: readString(row, ["id", "ID"]),
     name: readString(row, ["name", "Name"]),
-  }));
+  })).sort((a, b) => a.name.localeCompare(b.name, "he"));
 
   const apartments: Apartment[] = asRows(source.apartments).map((row) => ({
     id: readString(row, ["id", "ID"]),

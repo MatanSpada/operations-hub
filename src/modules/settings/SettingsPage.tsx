@@ -691,15 +691,6 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       <PageHeader
         title="ניהול נתונים"
         subtitle="ניהול בטוח של ישויות ליבה, עם הגנות על תלותים ונתונים היסטוריים"
-        action={
-          <button
-            onClick={() => openCreateModal(activeSection)}
-            className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            <Plus size={15} />
-            {SECTION_META[activeSection].addLabel}
-          </button>
-        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -719,24 +710,34 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2 border-b border-border">
-        {(Object.keys(SECTION_META) as ManagementSection[]).map((section) => (
-          <button
-            key={section}
-            onClick={() => {
-              setActiveSection(section);
-              setSearch("");
-              setActionError(null);
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeSection === section
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {SECTION_META[section].label}
-          </button>
-        ))}
+      <div className="flex flex-col gap-3 border-b border-border pb-2 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(SECTION_META) as ManagementSection[]).map((section) => (
+            <button
+              key={section}
+              onClick={() => {
+                setActiveSection(section);
+                setSearch("");
+                setActionError(null);
+              }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeSection === section
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {SECTION_META[section].label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => openCreateModal(activeSection)}
+          className="inline-flex min-w-[148px] items-center justify-center gap-2 self-start bg-primary px-4 py-2 text-sm font-medium text-primary-foreground rounded-md transition-opacity hover:opacity-90 xl:self-auto"
+        >
+          <Plus size={15} />
+          {SECTION_META[activeSection].addLabel}
+        </button>
       </div>
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
