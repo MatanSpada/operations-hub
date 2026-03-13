@@ -30,6 +30,20 @@ interface Props {
 type FoodActionMode = "set_quantity" | "supply_apartment";
 type SupplyAmount = "0.5" | "1";
 
+function formatFoodActionError(error?: string): string {
+  if (!error) return "הפעולה נכשלה";
+
+  if (error.startsWith("Unknown action: createFoodProduct")) {
+    return "ה-endpoint המחובר ב-Google Apps Script לא מכיל עדיין את createFoodProduct. יש לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה או לפרוס מחדש את ה-Web App.";
+  }
+
+  if (error.startsWith("Unknown action: setFoodStock")) {
+    return "ה-endpoint המחובר ב-Google Apps Script לא מכיל עדיין את setFoodStock. יש לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה או לפרוס מחדש את ה-Web App.";
+  }
+
+  return error;
+}
+
 export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
   const { foodProducts, foodTransactions, apartments } = data;
   const [activeTab, setActiveTab] = useState<"warehouse" | "apartments">("warehouse");
@@ -120,14 +134,14 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
     setIsSaving(true);
     setErrorMessage(null);
 
-    const result = await api.createFoodProduct({
+    const result = await api.createFoodProductDetailed({
       name,
       category,
       initialQuantity: initialQuantity ? Number(initialQuantity) : undefined,
     });
 
-    if (!result) {
-      setErrorMessage("שמירת המוצר נכשלה");
+    if (!result.data) {
+      setErrorMessage(formatFoodActionError(result.error || "שמירת המוצר נכשלה"));
       setIsSaving(false);
       return;
     }
@@ -152,9 +166,9 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
         return;
       }
 
-      const result = await api.setFoodStock(actionProduct.id, nextQuantity);
-      if (!result) {
-        setErrorMessage("עדכון הכמות נכשל");
+      const result = await api.setFoodStockDetailed(actionProduct.id, nextQuantity);
+      if (!result.data) {
+        setErrorMessage(formatFoodActionError(result.error || "עדכון הכמות נכשל"));
         setIsSaving(false);
         return;
       }
@@ -173,9 +187,13 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
         return;
       }
 
-      const result = await api.supplyApartment(actionForm.apartmentId, actionProduct.id, quantity);
-      if (!result) {
-        setErrorMessage("הנפקת המוצר לדירה נכשלה");
+      const result = await api.supplyApartmentDetailed(
+        actionForm.apartmentId,
+        actionProduct.id,
+        quantity
+      );
+      if (!result.data) {
+        setErrorMessage(formatFoodActionError(result.error || "הנפקת המוצר לדירה נכשלה"));
         setIsSaving(false);
         return;
       }

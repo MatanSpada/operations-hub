@@ -25,14 +25,29 @@ import {
   isEquipmentOverdue,
 } from "@/utils";
 import { api } from "@/api";
-import { Zap, AlertTriangle } from "lucide-react";
+import { Zap, AlertTriangle, Plus } from "lucide-react";
 
 interface Props { data: InitialData; onRefresh: () => void; }
+
+function formatEquipmentCreateError(error?: string): string {
+  if (!error) return "שמירת הפריט נכשלה";
+  if (error === "Equipment item already exists") {
+    return "פריט בשם הזה כבר קיים במערכת";
+  }
+  return error;
+}
 
 export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const { equipmentTypes, equipmentLedger, departments } = data;
   const [selectedType, setSelectedType] = useState<EquipmentType | null>(null);
   const [issueModal, setIssueModal] = useState<EquipmentType | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    totalQuantity: "0",
+  });
   const [form, setForm] = useState({
     quantity: 1,
     issuedTo: "",
@@ -79,6 +94,47 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const handleReturn = async (ledgerId: string) => {
     await api.returnEquipment(ledgerId);
     onRefresh();
+  };
+
+  const handleCreateEquipment = async () => {
+    const name = createForm.name.trim();
+    const totalQuantity = Number(createForm.totalQuantity);
+
+    if (!name) {
+      setCreateError("יש להזין שם פריט");
+      return;
+    }
+    if (Number.isNaN(totalQuantity) || totalQuantity < 0) {
+      setCreateError("יש להזין כמות התחלתית חוקית");
+      return;
+    }
+
+    const duplicate = equipmentTypes.some(
+      (type) => type.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+    );
+    if (duplicate) {
+      setCreateError("פריט בשם הזה כבר קיים במערכת");
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    const result = await api.createEquipmentTypeDetailed({
+      name,
+      totalQuantity,
+    });
+
+    if (!result.data) {
+      setCreateError(formatEquipmentCreateError(result.error));
+      setIsCreating(false);
+      return;
+    }
+
+    setCreateModalOpen(false);
+    setCreateForm({ name: "", totalQuantity: "0" });
+    setIsCreating(false);
+    await onRefresh();
   };
 
   // ── Ledger columns ────────────────────────────────────────────────
@@ -133,7 +189,22 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <PageHeader title="ציוד חשמלי" subtitle="מעקב הוצאות, החזרות ומלאי ציוד" />
+      <PageHeader
+        title="ציוד חשמלי"
+        subtitle="מעקב הוצאות, החזרות ומלאי ציוד"
+        action={
+          <button
+            onClick={() => {
+              setCreateModalOpen(true);
+              setCreateError(null);
+            }}
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+          >
+            <Plus size={15} />
+            הוספת פריט
+          </button>
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -272,6 +343,63 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             </button>
             <button
               onClick={() => setIssueModal(null)}
+              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={createModalOpen}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setCreateError(null);
+        }}
+        title="הוספת פריט ציוד חדש"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">שם פריט</label>
+            <input
+              type="text"
+              value={createForm.name}
+              onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              dir="rtl"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">כמות התחלתית במלאי</label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={createForm.totalQuantity}
+              onChange={(e) => setCreateForm({ ...createForm, totalQuantity: e.target.value })}
+              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">
+              הכמות נשמרת בקטלוג הציוד ומשמשת לחישוב המלאי הזמין מול ההוצאות הפעילות.
+            </p>
+          </div>
+          {createError && (
+            <p className="text-sm text-status-danger-text">{createError}</p>
+          )}
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={handleCreateEquipment}
+              disabled={isCreating}
+              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {isCreating ? "שומר..." : "שמור פריט"}
+            </button>
+            <button
+              onClick={() => {
+                setCreateModalOpen(false);
+                setCreateError(null);
+              }}
               className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
             >
               ביטול

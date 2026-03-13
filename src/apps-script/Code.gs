@@ -106,6 +106,33 @@ function doPost(e) {
       return jsonResponse_({ success: true });
     }
 
+    if (action === "createEquipmentType") {
+      const equipmentId = generateId_();
+      const equipmentName = String(payload.name || "").trim();
+      const totalQuantity = Number(payload.totalQuantity);
+
+      if (!equipmentName) {
+        throw new Error("Missing equipment name");
+      }
+      if (isNaN(totalQuantity) || totalQuantity < 0) {
+        throw new Error("Invalid total quantity");
+      }
+      if (equipmentTypeExists_(equipmentName)) {
+        throw new Error("Equipment item already exists");
+      }
+
+      appendRow_(SHEETS.EQUIPMENT_CATALOG, {
+        ID: equipmentId,
+        Name: equipmentName,
+        TotalQuantity: totalQuantity,
+      });
+
+      return jsonResponse_({
+        success: true,
+        data: { equipmentId: equipmentId },
+      });
+    }
+
     if (action === "returnEquipment") {
       updateRow_(SHEETS.EQUIPMENT_LEDGER, "ID", payload.ledgerId, {
         Status: "returned",
@@ -488,6 +515,19 @@ function closeLatestVehicleTrip_(plate) {
 
 function getEquipmentName_(equipmentId) {
   return findValueById_(SHEETS.EQUIPMENT_CATALOG, equipmentId, "Name") || String(equipmentId);
+}
+
+function equipmentTypeExists_(equipmentName) {
+  const normalizedName = String(equipmentName || "").trim().toLowerCase();
+  const rows = getRows_(SHEETS.EQUIPMENT_CATALOG);
+
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].Name || "").trim().toLowerCase() === normalizedName) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getFoodProductName_(productId) {

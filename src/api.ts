@@ -16,6 +16,25 @@ import { InitialData, ApiResponse } from "./types";
 import { MOCK_DATA } from "./mockData";
 import { normalizeInitialData } from "./data/normalize";
 
+export interface ApiActionResult<T> {
+  data: T | null;
+  error?: string;
+}
+
+async function parseApiJson<T>(
+  response: Response,
+  context: string
+): Promise<ApiResponse<T>> {
+  const rawText = await response.text();
+
+  try {
+    return JSON.parse(rawText) as ApiResponse<T>;
+  } catch {
+    const preview = rawText.trim().slice(0, 200);
+    throw new Error(`${context} returned non-JSON response: ${preview || "<empty>"}`);
+  }
+}
+
 // ── GET: fetch all initial data in one request ────────────────────────
 // This single call loads everything so the UI feels instant.
 // In the GAS backend, getInitialData() bundles all sheets.
@@ -37,12 +56,52 @@ export async function fetchInitialData(): Promise<InitialData | null> {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const json: ApiResponse<unknown> = await response.json();
+    const json = await parseApiJson<unknown>(response, "getInitialData");
     if (!json.success) throw new Error(json.error);
     return json.data ? normalizeInitialData(json.data) : null;
   } catch (err) {
     console.error("[API] fetchInitialData failed:", err);
     return null;
+  }
+}
+
+export async function postActionDetailed<T = boolean>(
+  action: string,
+  payload: Record<string, unknown>
+): Promise<ApiActionResult<T>> {
+  if (USE_MOCK_DATA) {
+    console.log(`[MOCK] postAction: ${action}`, payload);
+    return { data: true as unknown as T };
+  }
+
+  if (!IS_GAS_CONFIGURED) {
+    const error = `VITE_GAS_URL is not configured for ${action}`;
+    console.error(`[API] ${error}`);
+    return { data: null, error };
+  }
+
+  try {
+    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action, ...payload }),
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const json = await parseApiJson<T>(response, action);
+    if (!json.success) {
+      return { data: null, error: json.error || `Action ${action} failed` };
+    }
+
+    return { data: json.data ?? (true as unknown as T) };
+  } catch (err) {
+    const error =
+      err instanceof Error ? err.message : `Unknown error while calling ${action}`;
+    console.error(`[API] postAction(${action}) failed:`, err);
+    return { data: null, error };
   }
 }
 
@@ -53,34 +112,8 @@ export async function postAction<T = boolean>(
   action: string,
   payload: Record<string, unknown>
 ): Promise<T | null> {
-  if (USE_MOCK_DATA) {
-    console.log(`[MOCK] postAction: ${action}`, payload);
-    return true as unknown as T;
-  }
-
-  if (!IS_GAS_CONFIGURED) {
-    console.error(`[API] postAction(${action}) skipped because VITE_GAS_URL is not configured.`);
-    return null;
-  }
-
-  try {
-    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-      method: "POST",
-      // text/plain avoids CORS preflight issues with Google Apps Script
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, ...payload }),
-      redirect: "follow",
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const json: ApiResponse<T> = await response.json();
-    if (!json.success) throw new Error(json.error);
-    return json.data ?? (true as unknown as T);
-  } catch (err) {
-    console.error(`[API] postAction(${action}) failed:`, err);
-    return null;
-  }
+  const result = await postActionDetailed<T>(action, payload);
+  return result.data;
 }
 
 // ── Convenience wrappers (add more as needed) ─────────────────────────
@@ -110,6 +143,16 @@ export const api = {
     expectedReturnDate?: string;
   }) => postAction("issueEquipment", data),
 
+  createEquipmentType: (data: {
+    name: string;
+    totalQuantity: number;
+  }) => postAction<{ equipmentId: string }>("createEquipmentType", data),
+
+  createEquipmentTypeDetailed: (data: {
+    name: string;
+    totalQuantity: number;
+  }) => postActionDetailed<{ equipmentId: string }>("createEquipmentType", data),
+
   returnEquipment: (ledgerId: string) =>
     postAction("returnEquipment", { ledgerId }),
 
@@ -120,14 +163,26 @@ export const api = {
     initialQuantity?: number;
   }) => postAction<{ productId: string }>("createFoodProduct", data),
 
+  createFoodProductDetailed: (data: {
+    name: string;
+    category: string;
+    initialQuantity?: number;
+  }) => postActionDetailed<{ productId: string }>("createFoodProduct", data),
+
   addFoodShipment: (productId: string, quantity: number) =>
     postAction("addFoodShipment", { productId, quantity }),
 
   setFoodStock: (productId: string, quantity: number) =>
     postAction("setFoodStock", { productId, quantity }),
 
+  setFoodStockDetailed: (productId: string, quantity: number) =>
+    postActionDetailed("setFoodStock", { productId, quantity }),
+
   supplyApartment: (apartmentId: string, productId: string, quantity: number) =>
     postAction("supplyApartment", { apartmentId, productId, quantity }),
+
+  supplyApartmentDetailed: (apartmentId: string, productId: string, quantity: number) =>
+    postActionDetailed("supplyApartment", { apartmentId, productId, quantity }),
 
   // Workforce actions
   addReserveDuty: (data: {
