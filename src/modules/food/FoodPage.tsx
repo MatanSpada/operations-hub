@@ -5,20 +5,49 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { InitialData } from "@/types";
+import { FoodProduct, InitialData } from "@/types";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { Badge } from "@/components/shared/Badge";
-import { calcWarehouseStock, isApartmentStale, formatDate, daysSince } from "@/utils";
+import { Modal } from "@/components/shared/Modal";
+import { api } from "@/api";
+import {
+  calcWarehouseStock,
+  isApartmentStale,
+  formatDate,
+  daysSince,
+  formatQuantity,
+} from "@/utils";
 import { ALERT_THRESHOLDS } from "@/config";
-import { ShoppingBasket, Home } from "lucide-react";
+import { ShoppingBasket, Home, Plus, Boxes, PackagePlus, House, ArrowRightLeft } from "lucide-react";
 
-interface Props { data: InitialData; }
+interface Props {
+  data: InitialData;
+  onRefresh: () => void;
+}
 
-export const FoodPage: React.FC<Props> = ({ data }) => {
+type FoodActionMode = "set_quantity" | "supply_apartment";
+type SupplyAmount = "0.5" | "1";
+
+export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
   const { foodProducts, foodTransactions, apartments } = data;
   const [activeTab, setActiveTab] = useState<"warehouse" | "apartments">("warehouse");
+  const [addProductOpen, setAddProductOpen] = useState(false);
+  const [actionProduct, setActionProduct] = useState<(FoodProduct & { qty: number }) | null>(null);
+  const [actionMode, setActionMode] = useState<FoodActionMode>("set_quantity");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [addProductForm, setAddProductForm] = useState({
+    name: "",
+    category: "",
+    initialQuantity: "",
+  });
+  const [actionForm, setActionForm] = useState({
+    quantity: "",
+    apartmentId: "",
+    supplyAmount: "1" as SupplyAmount,
+  });
 
   const warehouseStock = useMemo(() =>
     foodProducts.map((p) => ({
@@ -28,6 +57,10 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
   [foodProducts, foodTransactions]);
 
   const lowStock = warehouseStock.filter((p) => p.qty <= ALERT_THRESHOLDS.foodLowStockQty);
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(foodProducts.map((product) => product.category).filter(Boolean))),
+    [foodProducts]
+  );
 
   // Per-apartment last supply date
   const apartmentSupply = useMemo(() =>
@@ -43,9 +76,136 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
     }),
   [apartments, foodTransactions]);
 
+  const resetActionModal = () => {
+    setActionProduct(null);
+    setActionMode("set_quantity");
+    setActionForm({ quantity: "", apartmentId: "", supplyAmount: "1" });
+    setErrorMessage(null);
+  };
+
+  const openActionModal = (product: FoodProduct & { qty: number }) => {
+    setActionProduct(product);
+    setActionMode("set_quantity");
+    setActionForm({
+      quantity: String(product.qty),
+      apartmentId: apartments[0]?.id ?? "",
+      supplyAmount: "1",
+    });
+    setErrorMessage(null);
+  };
+
+  const handleCreateProduct = async () => {
+    const name = addProductForm.name.trim();
+    const category = addProductForm.category.trim();
+    const initialQuantity = addProductForm.initialQuantity.trim();
+
+    if (!name || !category) {
+      setErrorMessage("יש למלא שם מוצר וקטגוריה");
+      return;
+    }
+
+    const duplicate = foodProducts.some(
+      (product) => product.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+    );
+    if (duplicate) {
+      setErrorMessage("מוצר בשם הזה כבר קיים במערכת");
+      return;
+    }
+
+    if (initialQuantity && (Number.isNaN(Number(initialQuantity)) || Number(initialQuantity) < 0)) {
+      setErrorMessage("כמות התחלתית חייבת להיות מספר חיובי או 0");
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    const result = await api.createFoodProduct({
+      name,
+      category,
+      initialQuantity: initialQuantity ? Number(initialQuantity) : undefined,
+    });
+
+    if (!result) {
+      setErrorMessage("שמירת המוצר נכשלה");
+      setIsSaving(false);
+      return;
+    }
+
+    setAddProductOpen(false);
+    setAddProductForm({ name: "", category: "", initialQuantity: "" });
+    await onRefresh();
+    setIsSaving(false);
+  };
+
+  const handleFoodAction = async () => {
+    if (!actionProduct) return;
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    if (actionMode === "set_quantity") {
+      const nextQuantity = Number(actionForm.quantity);
+      if (Number.isNaN(nextQuantity) || nextQuantity < 0) {
+        setErrorMessage("יש להזין כמות חוקית");
+        setIsSaving(false);
+        return;
+      }
+
+      const result = await api.setFoodStock(actionProduct.id, nextQuantity);
+      if (!result) {
+        setErrorMessage("עדכון הכמות נכשל");
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    if (actionMode === "supply_apartment") {
+      const quantity = Number(actionForm.supplyAmount);
+      if (!actionForm.apartmentId) {
+        setErrorMessage("יש לבחור דירה");
+        setIsSaving(false);
+        return;
+      }
+      if (actionProduct.qty < quantity) {
+        setErrorMessage("אין מספיק מלאי לביצוע הנפקה");
+        setIsSaving(false);
+        return;
+      }
+
+      const result = await api.supplyApartment(actionForm.apartmentId, actionProduct.id, quantity);
+      if (!result) {
+        setErrorMessage("הנפקת המוצר לדירה נכשלה");
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    await onRefresh();
+    setIsSaving(false);
+    resetActionModal();
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
-      <PageHeader title="מזון ודירות" subtitle="מלאי מחסן, אספקה לדירות ומעקב שיפועים" />
+      <PageHeader
+        title="מזון ודירות"
+        subtitle="מלאי מחסן, אספקה לדירות ומעקב שיפועים"
+        action={
+          activeTab === "warehouse" ? (
+            <button
+              onClick={() => {
+                setAddProductOpen(true);
+                setErrorMessage(null);
+              }}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+            >
+              <Plus size={15} />
+              הוספת מוצר
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -86,6 +246,7 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">קטגוריה</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">יחידות במחסן</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">סטטוס</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">פעולה</th>
               </tr>
             </thead>
             <tbody>
@@ -93,11 +254,20 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
                 <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
                   <td className="px-4 py-3 font-semibold">{p.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{p.category}</td>
-                  <td className="px-4 py-3 tabular-nums font-bold">{p.qty}</td>
+                  <td className="px-4 py-3 tabular-nums font-bold">{formatQuantity(p.qty)}</td>
                   <td className="px-4 py-3">
                     <Badge variant={p.qty <= ALERT_THRESHOLDS.foodLowStockQty ? "warning" : "success"}>
                       {p.qty <= ALERT_THRESHOLDS.foodLowStockQty ? "מלאי נמוך" : "תקין"}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => openActionModal(p)}
+                      className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80"
+                    >
+                      <ArrowRightLeft size={14} />
+                      פעולה
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -132,6 +302,196 @@ export const FoodPage: React.FC<Props> = ({ data }) => {
           })}
         </div>
       )}
+
+      <Modal
+        open={addProductOpen}
+        onClose={() => {
+          setAddProductOpen(false);
+          setErrorMessage(null);
+        }}
+        title="הוספת מוצר חדש למחסן"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-foreground">שם מוצר</label>
+              <input
+                type="text"
+                value={addProductForm.name}
+                onChange={(e) => setAddProductForm({ ...addProductForm, name: e.target.value })}
+                className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                dir="rtl"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-foreground">קטגוריה</label>
+              <input
+                type="text"
+                list="food-category-options"
+                value={addProductForm.category}
+                onChange={(e) => setAddProductForm({ ...addProductForm, category: e.target.value })}
+                className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                dir="rtl"
+              />
+              <datalist id="food-category-options">
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-foreground">כמות התחלתית במחסן (אופציונלי)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={addProductForm.initialQuantity}
+              onChange={(e) => setAddProductForm({ ...addProductForm, initialQuantity: e.target.value })}
+              className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">
+              אם תוזן כמות, המערכת תיצור גם תנועת כניסה למחסן באותו מסלול נתונים של שאר המלאי.
+            </p>
+          </div>
+          {errorMessage && <p className="text-sm text-status-danger-text">{errorMessage}</p>}
+          <div className="flex gap-3 justify-start">
+            <button
+              onClick={handleCreateProduct}
+              disabled={isSaving}
+              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {isSaving ? "שומר..." : "שמור מוצר"}
+            </button>
+            <button
+              onClick={() => {
+                setAddProductOpen(false);
+                setErrorMessage(null);
+              }}
+              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!actionProduct}
+        onClose={resetActionModal}
+        title={actionProduct ? `פעולה על ${actionProduct.name}` : "פעולה על מוצר"}
+      >
+        <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {([
+              {
+                id: "set_quantity" as const,
+                title: "הזן כמות חדשה",
+                description: "המערכת תשמור את הדלתא כתנועת מלאי כדי לשמור על עקביות.",
+                icon: <PackagePlus size={18} />,
+              },
+              {
+                id: "supply_apartment" as const,
+                title: "נפק לדירה",
+                description: "הנפקה לדירה תירשם כתנועת יציאה ותעדכן את תאריך האספקה של הדירה.",
+                icon: <House size={18} />,
+              },
+            ]).map((option) => (
+              <button
+                key={option.id}
+                onClick={() => {
+                  setActionMode(option.id);
+                  setErrorMessage(null);
+                }}
+                className={`rounded-xl border p-4 text-right transition-colors ${
+                  actionMode === option.id
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  {option.icon}
+                  {option.title}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground leading-5">{option.description}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground flex items-center justify-between">
+            <span>מלאי נוכחי במחסן</span>
+            <span className="font-semibold text-foreground">{actionProduct ? formatQuantity(actionProduct.qty) : "—"}</span>
+          </div>
+
+          {actionMode === "set_quantity" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-foreground">כמות חדשה למחסן</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={actionForm.quantity}
+                onChange={(e) => setActionForm({ ...actionForm, quantity: e.target.value })}
+                className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          )}
+
+          {actionMode === "supply_apartment" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-foreground">דירה</label>
+                <select
+                  value={actionForm.apartmentId}
+                  onChange={(e) => setActionForm({ ...actionForm, apartmentId: e.target.value })}
+                  className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  dir="rtl"
+                >
+                  <option value="">בחר דירה</option>
+                  {apartments.map((apartment) => (
+                    <option key={apartment.id} value={apartment.id}>
+                      {apartment.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-foreground">כמות להנפקה</label>
+                <select
+                  value={actionForm.supplyAmount}
+                  onChange={(e) =>
+                    setActionForm({ ...actionForm, supplyAmount: e.target.value as SupplyAmount })
+                  }
+                  className="h-10 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  dir="rtl"
+                >
+                  <option value="0.5">חצי ארגז</option>
+                  <option value="1">ארגז</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {errorMessage && <p className="text-sm text-status-danger-text">{errorMessage}</p>}
+
+          <div className="flex gap-3 justify-start">
+            <button
+              onClick={handleFoodAction}
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              <Boxes size={15} />
+              {isSaving ? "שומר..." : "שמור פעולה"}
+            </button>
+            <button
+              onClick={resetActionModal}
+              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

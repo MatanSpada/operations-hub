@@ -128,17 +128,78 @@ function doPost(e) {
       return jsonResponse_({ success: true });
     }
 
+    if (action === "createFoodProduct") {
+      const productId = generateId_();
+      const productName = String(payload.name || "").trim();
+      const category = String(payload.category || "").trim();
+      const initialQuantity = Number(payload.initialQuantity || 0);
+
+      if (!productName || !category) {
+        throw new Error("Missing product name or category");
+      }
+      if (isNaN(initialQuantity) || initialQuantity < 0) {
+        throw new Error("Invalid initial quantity");
+      }
+
+      appendRow_(SHEETS.FOOD_CATALOG, {
+        ID: productId,
+        Name: productName,
+        Category: category,
+      });
+
+      if (initialQuantity > 0) {
+        appendFoodTransaction_(productId, "in", initialQuantity, {
+          productName: productName,
+        });
+      }
+
+      return jsonResponse_({
+        success: true,
+        data: { productId: productId },
+      });
+    }
+
+    if (action === "setFoodStock") {
+      const targetQuantity = Number(payload.quantity);
+      const productId = String(payload.productId || "").trim();
+
+      if (!productId) {
+        throw new Error("Missing product ID");
+      }
+      if (isNaN(targetQuantity) || targetQuantity < 0) {
+        throw new Error("Invalid target quantity");
+      }
+
+      const currentQuantity = getFoodStock_(productId);
+      const delta = Number((targetQuantity - currentQuantity).toFixed(2));
+
+      if (delta !== 0) {
+        appendFoodTransaction_(
+          productId,
+          delta > 0 ? "in" : "out",
+          Math.abs(delta),
+          {}
+        );
+      }
+
+      return jsonResponse_({ success: true });
+    }
+
     if (action === "supplyApartment") {
+      const quantity = Number(payload.quantity || 0);
       const apartment = getApartment_(payload.apartmentId);
-      appendRow_(SHEETS.FOOD_TRANSACTIONS, {
-        ID: generateId_(),
-        Date: todayIso_(),
-        Type: "out",
-        ProductID: payload.productId,
-        ProductName: getFoodProductName_(payload.productId),
-        Quantity: Number(payload.quantity || 0),
-        DestinationApartmentId: payload.apartmentId,
-        DestinationName: apartment ? apartment.name : "",
+      const currentQuantity = getFoodStock_(payload.productId);
+
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error("Invalid supply quantity");
+      }
+      if (currentQuantity < quantity) {
+        throw new Error("Not enough stock for apartment supply");
+      }
+
+      appendFoodTransaction_(payload.productId, "out", Number(payload.quantity || 0), {
+        destinationApartmentId: payload.apartmentId,
+        destinationName: apartment ? apartment.name : "",
       });
       updateRow_(SHEETS.APARTMENTS, "ID", payload.apartmentId, {
         LastSupplied: todayIso_(),
@@ -431,6 +492,32 @@ function getEquipmentName_(equipmentId) {
 
 function getFoodProductName_(productId) {
   return findValueById_(SHEETS.FOOD_CATALOG, productId, "Name") || String(productId);
+}
+
+function getFoodStock_(productId) {
+  return getRows_(SHEETS.FOOD_TRANSACTIONS).reduce(function (sum, row) {
+    if (String(row.ProductID) !== String(productId)) {
+      return sum;
+    }
+
+    const quantity = numberValue_(row.Quantity);
+    return sum + (String(row.Type) === "out" ? -quantity : quantity);
+  }, 0);
+}
+
+function appendFoodTransaction_(productId, type, quantity, options) {
+  const metadata = options || {};
+
+  appendRow_(SHEETS.FOOD_TRANSACTIONS, {
+    ID: generateId_(),
+    Date: todayIso_(),
+    Type: type,
+    ProductID: productId,
+    ProductName: metadata.productName || getFoodProductName_(productId),
+    Quantity: quantity,
+    DestinationApartmentId: metadata.destinationApartmentId || "",
+    DestinationName: metadata.destinationName || "",
+  });
 }
 
 function getApartment_(apartmentId) {

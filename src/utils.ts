@@ -110,6 +110,14 @@ export function calcWarehouseStock(
     .reduce((sum, t) => sum + (t.type === "in" ? t.quantity : -t.quantity), 0);
 }
 
+export function formatQuantity(quantity: number): string {
+  if (Number.isInteger(quantity)) return String(quantity);
+  return quantity.toLocaleString("he-IL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function isApartmentStale(lastSupplied?: string): boolean {
   if (!lastSupplied) return true;
   const days = daysSince(lastSupplied);

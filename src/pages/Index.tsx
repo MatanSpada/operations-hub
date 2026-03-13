@@ -44,7 +44,7 @@ export default function Index() {
     if (!data) return null;
     switch (activeTab) {
       case "dashboard":     return <DashboardPage data={data} />;
-      case "food":          return <FoodPage data={data} />;
+      case "food":          return <FoodPage data={data} onRefresh={load} />;
       case "equipment":     return <EquipmentPage data={data} onRefresh={load} />;
       case "vehicles":      return <VehiclesPage data={data} onRefresh={load} />;
       case "workforce":     return <WorkforcePage data={data} />;

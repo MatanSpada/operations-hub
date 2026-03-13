@@ -114,8 +114,17 @@ export const api = {
     postAction("returnEquipment", { ledgerId }),
 
   // Food actions
+  createFoodProduct: (data: {
+    name: string;
+    category: string;
+    initialQuantity?: number;
+  }) => postAction<{ productId: string }>("createFoodProduct", data),
+
   addFoodShipment: (productId: string, quantity: number) =>
     postAction("addFoodShipment", { productId, quantity }),
+
+  setFoodStock: (productId: string, quantity: number) =>
+    postAction("setFoodStock", { productId, quantity }),
 
   supplyApartment: (apartmentId: string, productId: string, quantity: number) =>
     postAction("supplyApartment", { apartmentId, productId, quantity }),
