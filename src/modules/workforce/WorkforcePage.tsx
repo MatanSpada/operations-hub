@@ -128,7 +128,7 @@ export const WorkforcePage: React.FC<Props> = ({ data }) => {
       <PageHeader title="כוח אדם ומילואים" subtitle="ניהול עובדים ומעקב סטטוס מילואים" />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard label="סה״כ עובדים" value={totalEmployees} icon={<Users size={18} />} />
         <SummaryCard label="פעילים" value={activeCount} variant="success" />
         <SummaryCard label="במילואים" value={inReserve} variant={inReserve > 0 ? "warning" : "neutral"} />
@@ -141,17 +141,17 @@ export const WorkforcePage: React.FC<Props> = ({ data }) => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="חיפוש עובד..."
-          className="w-60"
+          className="w-full sm:w-60"
         />
         <select
           value={deptFilter}
           onChange={(e) => setDeptFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-auto"
           dir="rtl"
         >
           <option>הכל</option>
@@ -163,7 +163,7 @@ export const WorkforcePage: React.FC<Props> = ({ data }) => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-auto"
           dir="rtl"
         >
           <option>הכל</option>
@@ -179,6 +179,7 @@ export const WorkforcePage: React.FC<Props> = ({ data }) => {
         data={filtered}
         rowKey={(e) => e.id}
         emptyMessage="לא נמצאו עובדים"
+        minWidthClassName="min-w-[50rem]"
       />
     </div>
   );

@@ -128,13 +128,13 @@ export const DashboardPage: React.FC<Props> = ({ data }) => {
   [departments, employees]);
 
   return (
-    <div className="animate-fade-in space-y-8">
+    <div className="animate-fade-in space-y-6 sm:space-y-8">
       {/* Summary cards */}
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           סיכום כללי
         </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             label="סה״כ עובדים"
             value={totalEmployees}
@@ -183,11 +183,11 @@ export const DashboardPage: React.FC<Props> = ({ data }) => {
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           כוח אדם לפי מחלקה
         </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {deptStats.map((d) => (
             <div
               key={d.name}
-              className="bg-card rounded-lg shadow-card p-4 flex flex-col gap-1"
+              className="flex flex-col gap-1 rounded-lg bg-card p-4 shadow-card"
             >
               <span className="text-xs font-medium text-muted-foreground">{d.name}</span>
               <span className="text-2xl font-bold text-foreground tabular-nums">{d.total}</span>
@@ -210,9 +210,9 @@ export const DashboardPage: React.FC<Props> = ({ data }) => {
         {vehicles.filter((v) => v.status === "in_use").length === 0 ? (
           <p className="text-sm text-muted-foreground">אין רכבים בשימוש כרגע</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {vehicles.filter((v) => v.status === "in_use").map((v) => (
-              <div key={v.plate} className="bg-card rounded-lg shadow-card p-4 flex items-center gap-4">
+              <div key={v.plate} className="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-card sm:flex-row sm:items-center sm:gap-4">
                 <div className="bg-status-warning-bg rounded-md px-3 py-1 font-mono font-bold text-status-warning-text text-sm">
                   {v.plate}
                 </div>

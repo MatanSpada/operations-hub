@@ -27,7 +27,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-4"
       dir="rtl"
     >
       {/* Backdrop */}
@@ -38,22 +38,22 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Panel */}
       <div
         className={cn(
-          "relative bg-card rounded-xl shadow-lg w-full animate-scale-in",
+          "relative max-h-[min(90vh,52rem)] w-full overflow-hidden rounded-t-2xl bg-card shadow-lg animate-scale-in sm:rounded-xl",
           width
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
+          <h3 className="min-w-0 text-base font-semibold text-foreground">{title}</h3>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors rounded-sm"
+            className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <X size={18} />
           </button>
         </div>
         {/* Body */}
-        <div className="px-6 py-5">{children}</div>
+        <div className="max-h-[calc(90vh-4.5rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
       </div>
     </div>
   );

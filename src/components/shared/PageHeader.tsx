@@ -13,11 +13,11 @@ interface PageHeaderProps {
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, action }) => (
-  <div className="flex items-start justify-between mb-6">
-    <div>
-      <h2 className="text-xl font-bold text-foreground">{title}</h2>
-      {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+  <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="min-w-0">
+      <h2 className="text-lg font-bold text-foreground sm:text-xl">{title}</h2>
+      {subtitle && <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{subtitle}</p>}
     </div>
-    {action && <div>{action}</div>}
+    {action && <div className="w-full sm:w-auto sm:shrink-0">{action}</div>}
   </div>
 );

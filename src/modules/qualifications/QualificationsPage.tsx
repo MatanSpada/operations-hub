@@ -35,17 +35,17 @@ export const QualificationsPage: React.FC<Props> = ({ data }) => {
     <div className="animate-fade-in space-y-6">
       <PageHeader title="הכשרות" subtitle="מטריצת הכשרות לפי עובד וסוג" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard label="סוגי הכשרות" value={qualifications.length} icon={<Award size={18} />} />
         <SummaryCard label="שיוכים פעילים" value={totalAssignments} icon={<CheckCircle size={18} />} />
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="חיפוש עובד..." className="w-56" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <SearchInput value={search} onChange={setSearch} placeholder="חיפוש עובד..." className="w-full sm:w-56" />
         <select
           value={deptFilter}
           onChange={(e) => setDeptFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring sm:w-auto"
           dir="rtl"
         >
           <option>הכל</option>
@@ -54,8 +54,8 @@ export const QualificationsPage: React.FC<Props> = ({ data }) => {
       </div>
 
       {/* Matrix table */}
-      <div className="bg-card rounded-lg shadow-card overflow-x-auto">
-        <table className="text-sm" dir="rtl" style={{ minWidth: "100%" }}>
+      <div className="overflow-x-auto rounded-lg bg-card shadow-card">
+        <table className="min-w-[44rem] text-sm" dir="rtl" style={{ minWidth: "max(100%, 44rem)" }}>
           <thead>
             <tr className="bg-muted border-b border-border">
               <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground sticky right-0 bg-muted z-10 min-w-36">

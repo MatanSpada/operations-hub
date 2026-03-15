@@ -297,7 +297,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
               setCreateModalOpen(true);
               setCreateError(null);
             }}
-            className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
           >
             <Plus size={15} />
             הוספת פריט
@@ -306,7 +306,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard label="סוגי ציוד" value={equipmentTypes.length} icon={<Zap size={18} />} />
         <SummaryCard
           label="פריטים מושאלים כעת"
@@ -326,15 +326,16 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           מלאי לפי סוג
         </h3>
-        <div className="bg-card rounded-lg shadow-card overflow-hidden">
-          <table className="w-full text-sm" dir="rtl">
+        <div className="overflow-hidden rounded-lg bg-card shadow-card">
+          <div className="overflow-x-auto">
+          <table className="min-w-[38rem] w-full text-sm" dir="rtl">
             <thead>
               <tr className="bg-muted border-b border-border">
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">שם פריט</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">סה״כ</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">זמין</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">מושאל</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">פעולות</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">שם פריט</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">סה״כ</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">זמין</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">מושאל</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">פעולות</th>
               </tr>
             </thead>
             <tbody>
@@ -344,15 +345,15 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
                   onClick={() => setSelectedType(t.id === selectedType?.id ? null : t)}
                 >
-                  <td className="px-4 py-3 font-semibold">{t.name}</td>
-                  <td className="px-4 py-3 tabular-nums">{t.totalQuantity}</td>
-                  <td className="px-4 py-3 tabular-nums">
+                  <td className="px-3 py-3 font-semibold sm:px-4">{t.name}</td>
+                  <td className="px-3 py-3 tabular-nums sm:px-4">{t.totalQuantity}</td>
+                  <td className="px-3 py-3 tabular-nums sm:px-4">
                     <span className={t.available === 0 ? "text-status-danger-text font-bold" : "text-status-success-text font-bold"}>
                       {t.available}
                     </span>
                   </td>
-                  <td className="px-4 py-3 tabular-nums">{t.issued}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 tabular-nums sm:px-4">{t.issued}</td>
+                  <td className="px-3 py-3 sm:px-4">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -368,6 +369,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
@@ -385,6 +387,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
           }
           rowKey={(l) => l.id}
           emptyMessage="אין פריטים מושאלים"
+          minWidthClassName="min-w-[52rem]"
         />
       </section>
 
@@ -394,7 +397,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         title={`פעולה — ${actionItem?.name}`}
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               onClick={() => {
                 setActionMode("set_quantity");
@@ -425,7 +428,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
 
           {actionMode === "set_quantity" && (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-lg bg-muted/40 px-4 py-3">
                   <div className="text-xs text-muted-foreground">כמות כוללת נוכחית</div>
                   <div className="text-lg font-semibold tabular-nums">{actionItem?.totalQuantity ?? 0}</div>
@@ -512,11 +515,11 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             <p className="text-sm text-status-danger-text">{actionError}</p>
           )}
 
-          <div className="flex gap-3 mt-2">
+          <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
             <button
               onClick={handleEquipmentAction}
               disabled={isSubmittingAction}
-              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
             >
               {isSubmittingAction
                 ? "שומר..."
@@ -526,7 +529,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             </button>
             <button
               onClick={resetActionModal}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>

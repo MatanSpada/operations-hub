@@ -60,7 +60,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
       <PageHeader title="רכבים" subtitle="מעקב צי, שליחויות וסטטוס רכבים" />
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard label="פנויים" value={available.length} variant="success" icon={<Truck size={18} />} />
         <SummaryCard label="בשימוש" value={inUse.length} variant="warning" icon={<Truck size={18} />} />
         <SummaryCard label="תחזוקה" value={maintenance.length} variant="danger" icon={<Wrench size={18} />} />
@@ -72,16 +72,16 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             רכבים בשימוש כעת
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {inUse.map((v) => (
-              <div key={v.plate} className="bg-card rounded-lg shadow-card p-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
+              <div key={v.plate} className="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-card sm:p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="font-mono font-bold text-lg bg-status-warning-bg text-status-warning-text px-3 py-1 rounded-md">
                     {v.plate}
                   </span>
                   <Badge variant="warning">בשימוש</Badge>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <div>
                     <span className="text-muted-foreground text-xs">נהג</span>
                     <p className="font-medium">{v.currentDriver || "—"}</p>
@@ -101,7 +101,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
                 </div>
                 <button
                   onClick={() => handleReturn(v.plate)}
-                  className="flex items-center gap-2 text-sm font-medium text-status-success-text bg-status-success-bg hover:opacity-80 px-3 py-2 rounded-md transition-opacity"
+                  className="flex items-center justify-center gap-2 rounded-md bg-status-success-bg px-3 py-2.5 text-sm font-medium text-status-success-text transition-opacity hover:opacity-80 sm:justify-start"
                 >
                   <RotateCcw size={14} /> החזר רכב
                 </button>
@@ -116,32 +116,33 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           כל הרכבים
         </h3>
-        <div className="bg-card rounded-lg shadow-card overflow-hidden">
-          <table className="w-full text-sm" dir="rtl">
+        <div className="overflow-hidden rounded-lg bg-card shadow-card">
+          <div className="overflow-x-auto">
+          <table className="min-w-[44rem] w-full text-sm" dir="rtl">
             <thead>
               <tr className="bg-muted border-b border-border">
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">לוחית רישוי</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">סטטוס</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">נהג נוכחי</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">הערות</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">פעולות</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">לוחית רישוי</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">סטטוס</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">נהג נוכחי</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">הערות</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">פעולות</th>
               </tr>
             </thead>
             <tbody>
               {vehicles.map((v) => (
                 <tr key={v.plate} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 sm:px-4">
                     <span className="font-mono font-bold">{v.plate}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 sm:px-4">
                     <Badge variant={vehicleStatusVariant(v.status)}>
                       {vehicleStatusLabel(v.status)}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{v.currentDriver || "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">{v.notes || "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                  <td className="px-3 py-3 text-muted-foreground sm:px-4">{v.currentDriver || "—"}</td>
+                  <td className="px-3 py-3 text-xs text-muted-foreground sm:px-4">{v.notes || "—"}</td>
+                  <td className="px-3 py-3 sm:px-4">
+                    <div className="flex flex-wrap gap-3">
                       {v.status === "available" && (
                         <>
                           <button
@@ -180,6 +181,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
@@ -214,16 +216,16 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="flex gap-3 justify-start mt-2">
+          <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
             <button
               onClick={handleCheckout}
-              className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
             >
               <CheckCircle size={15} /> אשר שליחות
             </button>
             <button
               onClick={() => setCheckoutModal(null)}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>

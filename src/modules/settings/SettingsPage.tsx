@@ -693,7 +693,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         subtitle="ניהול בטוח של ישויות ליבה, עם הגנות על תלותים ונתונים היסטוריים"
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard label="עובדים" value={employees.length} icon={<Users size={18} />} />
         <SummaryCard label="מחלקות" value={departments.length} icon={<Database size={18} />} />
         <SummaryCard label="מוצרים" value={foodProducts.length} icon={<ShoppingBasket size={18} />} />
@@ -701,10 +701,10 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         <SummaryCard label="הכשרות" value={qualifications.length} icon={<Award size={18} />} />
       </div>
 
-      <section className="bg-card rounded-lg shadow-card p-5 flex items-start gap-3">
+      <section className="flex items-start gap-3 rounded-lg bg-card p-4 shadow-card sm:p-5">
         <ShieldAlert size={18} className="text-status-warning-text mt-0.5" />
         <div className="text-sm text-muted-foreground leading-6">
-          מחיקה מתבצעת רק כאשר אין תלותים פעילים, או עם ניקוי מבוקר של קשרי שיוך.
+          מחיקה מתבצעת רק כאשר לא שמורים על העובד פריטים.
           עובדים עם ציוד פעיל או רכבים בשימוש ייחסמו, מחלקות עם עובדים או מוצרים ייחסמו,
           ומוצרים עם היסטוריית מלאי לא יימחקו.
         </div>
@@ -720,10 +720,10 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
                 setSearch("");
                 setActionError(null);
               }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                 activeSection === section
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
               {SECTION_META[section].label}
@@ -733,14 +733,14 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
         <button
           onClick={() => openCreateModal(activeSection)}
-          className="inline-flex min-w-[148px] items-center justify-center gap-2 self-start bg-primary px-4 py-2 text-sm font-medium text-primary-foreground rounded-md transition-opacity hover:opacity-90 xl:self-auto"
+          className="inline-flex w-full min-w-[148px] items-center justify-center gap-2 self-start rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto xl:self-auto"
         >
           <Plus size={15} />
           {SECTION_META[activeSection].addLabel}
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -758,6 +758,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         data={sectionContent.data}
         rowKey={sectionContent.rowKey}
         emptyMessage={sectionContent.emptyMessage}
+        minWidthClassName="min-w-[48rem]"
       />
 
       <Modal
@@ -769,17 +770,17 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         <div className="flex flex-col gap-5">
           {renderCreateForm()}
           {actionError && <p className="text-sm text-status-danger-text">{actionError}</p>}
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
             <button
               onClick={submitCreate}
               disabled={isSaving}
-              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
             >
               {isSaving ? "שומר..." : "שמור"}
             </button>
             <button
               onClick={closeCreateModal}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>
@@ -800,11 +801,11 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
             המחיקה תתבצע רק אם אין תלותים פעילים שמסכנים את שלמות הנתונים.
           </p>
           {actionError && <p className="text-sm text-status-danger-text">{actionError}</p>}
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
             <button
               onClick={confirmDelete}
               disabled={isSaving}
-              className="bg-status-danger-text text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="w-full rounded-md bg-status-danger-text px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
             >
               {isSaving ? "מוחק..." : "אשר מחיקה"}
             </button>
@@ -813,7 +814,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
                 setDeleteTarget(null);
                 setActionError(null);
               }}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>

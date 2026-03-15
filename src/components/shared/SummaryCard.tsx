@@ -35,15 +35,15 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
 }) => (
   <div
     className={cn(
-      "bg-card rounded-lg shadow-card hover:shadow-card-hover transition-shadow duration-250 p-5 flex flex-col gap-2",
+      "flex min-h-[8.5rem] flex-col gap-2 rounded-lg bg-card p-4 shadow-card transition-shadow duration-250 hover:shadow-card-hover sm:p-5",
       className
     )}
   >
     <div className="flex items-center justify-between">
-      <span className="text-sm text-muted-foreground font-medium">{label}</span>
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
       {icon && <span className="text-muted-foreground opacity-60">{icon}</span>}
     </div>
-    <span className={cn("text-3xl font-bold tabular-nums leading-none", accentMap[variant])}>
+    <span className={cn("text-2xl font-bold leading-none tabular-nums sm:text-3xl", accentMap[variant])}>
       {value}
     </span>
     {sub && <span className="text-xs text-muted-foreground">{sub}</span>}

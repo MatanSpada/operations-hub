@@ -20,11 +20,14 @@ import { VehiclesPage } from "@/modules/vehicles/VehiclesPage";
 import { WorkforcePage } from "@/modules/workforce/WorkforcePage";
 import { QualificationsPage } from "@/modules/qualifications/QualificationsPage";
 import { SettingsPage } from "@/modules/settings/SettingsPage";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Index() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [data, setData] = useState<InitialData | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "synced" | "error">("idle");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const load = useCallback(async () => {
     setSyncStatus("loading");
@@ -38,6 +41,22 @@ export default function Index() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [activeTab, isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || !mobileSidebarOpen) {
+      document.body.style.overflow = "";
+      return;
+    }
+
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobile, mobileSidebarOpen]);
 
   // ADD NEW TAB CASE HERE ↓
   const renderTab = () => {
@@ -56,10 +75,23 @@ export default function Index() {
 
   return (
     <div className="flex min-h-screen bg-background" dir="rtl">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} syncStatus={syncStatus} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopHeader activeTab={activeTab} onRefresh={load} isLoading={syncStatus === "loading"} />
-        <main className="flex-1 p-6 lg:p-8 overflow-x-hidden">
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        syncStatus={syncStatus}
+        isMobile={isMobile}
+        isOpen={mobileSidebarOpen}
+        onOpenChange={setMobileSidebarOpen}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopHeader
+          activeTab={activeTab}
+          onRefresh={load}
+          isLoading={syncStatus === "loading"}
+          showMenuButton={isMobile}
+          onMenuClick={() => setMobileSidebarOpen((open) => !open)}
+        />
+        <main className="flex-1 overflow-x-hidden px-4 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
           {syncStatus === "loading" && !data && (
             <div className="flex items-center justify-center h-64">
               <div className="flex flex-col items-center gap-3 text-muted-foreground">

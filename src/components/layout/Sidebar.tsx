@@ -10,7 +10,7 @@
  * 4. Add the route/case in src/App.tsx
  */
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   LayoutDashboard,
   ShoppingBasket,
@@ -19,6 +19,7 @@ import {
   Users,
   Award,
   Database,
+  X,
 } from "lucide-react";
 import { TabId } from "@/types";
 import { APP_META } from "@/config";
@@ -39,12 +40,18 @@ interface SidebarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   syncStatus: "idle" | "loading" | "synced" | "error";
+  isMobile: boolean;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   syncStatus,
+  isMobile,
+  isOpen,
+  onOpenChange,
 }) => {
   const syncLabel = {
     idle: "ממתין",
@@ -60,30 +67,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
     error: "text-status-danger-text",
   }[syncStatus];
 
-  return (
-    <aside
-      className="w-60 shrink-0 bg-sidebar border-l border-sidebar-border flex flex-col h-screen sticky top-0 shadow-sm"
-      dir="rtl"
-    >
-      {/* Brand */}
-      <div className="px-5 py-5 border-b border-sidebar-border">
-        <h1 className="text-base font-bold text-foreground leading-tight">
-          {APP_META.name}
-        </h1>
-        <span className={cn("text-xs mt-1 block", syncColor)}>{syncLabel}</span>
+  useEffect(() => {
+    if (!isMobile || !isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobile, isOpen, onOpenChange]);
+
+  const sidebarContent = (
+    <>
+      <div className="flex items-start justify-between gap-3 border-b border-sidebar-border px-4 py-4 sm:px-5 sm:py-5">
+        <div>
+          <h1 className="text-base font-bold leading-tight text-foreground">
+            {APP_META.name}
+          </h1>
+          <span className={cn("mt-1 block text-xs", syncColor)}>{syncLabel}</span>
+        </div>
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            aria-label="סגור תפריט"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+      <nav className="flex-1 overflow-y-auto px-2 py-3">
         <div className="flex flex-col gap-0.5">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
+              type="button"
               onClick={() => onTabChange(item.id)}
               className={cn(
-                "flex items-center gap-3 w-full text-right px-3 py-2.5 rounded-md text-sm transition-all duration-150 ease-spring",
+                "flex w-full items-center gap-3 rounded-md px-3 py-3 text-right text-sm transition-all duration-150 ease-spring sm:py-2.5",
                 activeTab === item.id
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
@@ -94,12 +122,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </nav>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-sidebar-border">
-        <p className="text-xs text-muted-foreground">
-          גרסה {APP_META.version}
-        </p>
+      <div className="border-t border-sidebar-border px-4 py-4 sm:px-5">
+        <p className="text-xs text-muted-foreground">גרסה {APP_META.version}</p>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside
+        className="sticky top-0 hidden h-screen w-60 shrink-0 border-l border-sidebar-border bg-sidebar shadow-sm md:flex md:flex-col"
+        dir="rtl"
+      >
+        {sidebarContent}
+      </aside>
+
+      {isMobile && (
+        <div
+          className={cn(
+            "fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity duration-200 md:hidden",
+            isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          )}
+          onClick={() => onOpenChange(false)}
+          aria-hidden={!isOpen}
+        >
+          <aside
+            className={cn(
+              "absolute inset-y-0 right-0 flex w-[min(82vw,20rem)] max-w-full flex-col border-l border-sidebar-border bg-sidebar shadow-lg transition-transform duration-200 ease-out",
+              isOpen ? "translate-x-0" : "translate-x-full"
+            )}
+            dir="rtl"
+            onClick={(event) => event.stopPropagation()}
+            aria-label="ניווט ראשי"
+          >
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

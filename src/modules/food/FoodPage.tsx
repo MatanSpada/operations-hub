@@ -216,7 +216,7 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
                 setAddProductOpen(true);
                 setErrorMessage(null);
               }}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
             >
               <Plus size={15} />
               הוספת מוצר
@@ -226,7 +226,7 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard label="סוגי מוצרים" value={foodProducts.length} icon={<ShoppingBasket size={18} />} />
         <SummaryCard label="דירות" value={apartments.length} icon={<Home size={18} />} />
         <SummaryCard
@@ -242,12 +242,12 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
       ))}
 
       {/* Tab Switch */}
-      <div className="flex gap-2 border-b border-border">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
         {(["warehouse", "apartments"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${activeTab === t ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
           >
             {t === "warehouse" ? "מחסן" : "דירות"}
           </button>
@@ -256,32 +256,33 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
 
       {/* Warehouse */}
       {activeTab === "warehouse" && (
-        <div className="bg-card rounded-lg shadow-card overflow-hidden">
-          <table className="w-full text-sm" dir="rtl">
+        <div className="overflow-hidden rounded-lg bg-card shadow-card">
+          <div className="overflow-x-auto">
+          <table className="min-w-[42rem] w-full text-sm" dir="rtl">
             <thead>
               <tr className="bg-muted border-b border-border">
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">מוצר</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">קטגוריה</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">יחידות במחסן</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">סטטוס</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">פעולה</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">מוצר</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">קטגוריה</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">יחידות במחסן</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">סטטוס</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">פעולה</th>
               </tr>
             </thead>
             <tbody>
               {warehouseStock.map((p) => (
                 <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
-                  <td className="px-4 py-3 font-semibold">{p.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.category}</td>
-                  <td className="px-4 py-3 tabular-nums font-bold">{formatQuantity(p.qty)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 font-semibold sm:px-4">{p.name}</td>
+                  <td className="px-3 py-3 text-muted-foreground sm:px-4">{p.category}</td>
+                  <td className="px-3 py-3 font-bold tabular-nums sm:px-4">{formatQuantity(p.qty)}</td>
+                  <td className="px-3 py-3 sm:px-4">
                     <Badge variant={p.qty <= ALERT_THRESHOLDS.foodLowStockQty ? "warning" : "success"}>
                       {p.qty <= ALERT_THRESHOLDS.foodLowStockQty ? "מלאי נמוך" : "תקין"}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 sm:px-4">
                     <button
                       onClick={() => openActionModal(p)}
-                      className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80"
+                      className="inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium text-primary hover:text-primary/80"
                     >
                       <ArrowRightLeft size={14} />
                       פעולה
@@ -291,18 +292,19 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* Apartments */}
       {activeTab === "apartments" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {apartmentSupply.map((apt) => {
             const stale = isApartmentStale(apt.lastSupplied);
             const days = daysSince(apt.lastSupplied);
             return (
-              <div key={apt.id} className="bg-card rounded-lg shadow-card p-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
+              <div key={apt.id} className="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-card sm:p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="font-bold text-foreground">{apt.name}</span>
                   <Badge variant={stale ? "warning" : "success"}>
                     {stale ? "לא סופקה לאחרונה" : "מסופקת"}
@@ -373,11 +375,11 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
             </p>
           </div>
           {errorMessage && <p className="text-sm text-status-danger-text">{errorMessage}</p>}
-          <div className="flex gap-3 justify-start">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
             <button
               onClick={handleCreateProduct}
               disabled={isSaving}
-              className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
             >
               {isSaving ? "שומר..." : "שמור מוצר"}
             </button>
@@ -386,7 +388,7 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
                 setAddProductOpen(false);
                 setErrorMessage(null);
               }}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>
@@ -436,7 +438,7 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
             ))}
           </div>
 
-          <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground flex items-center justify-between">
+          <div className="flex flex-col gap-1 rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span>מלאי נוכחי במחסן</span>
             <span className="font-semibold text-foreground">{actionProduct ? formatQuantity(actionProduct.qty) : "—"}</span>
           </div>
@@ -492,18 +494,18 @@ export const FoodPage: React.FC<Props> = ({ data, onRefresh }) => {
 
           {errorMessage && <p className="text-sm text-status-danger-text">{errorMessage}</p>}
 
-          <div className="flex gap-3 justify-start">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
             <button
               onClick={handleFoodAction}
               disabled={isSaving}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
             >
               <Boxes size={15} />
               {isSaving ? "שומר..." : "שמור פעולה"}
             </button>
             <button
               onClick={resetActionModal}
-              className="text-sm font-medium text-muted-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors"
+              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
             </button>

@@ -21,7 +21,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   placeholder = "חיפוש...",
   className,
 }) => (
-  <div className={cn("relative", className)}>
+  <div className={cn("relative w-full", className)}>
     <Search
       size={15}
       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
@@ -31,7 +31,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full h-9 pr-9 pl-3 rounded-md border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+      className="h-10 w-full rounded-md border border-border bg-card pl-3 pr-9 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
       dir="rtl"
     />
   </div>

@@ -22,6 +22,7 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   className?: string;
+  minWidthClassName?: string;
 }
 
 export function DataTable<T>({
@@ -31,18 +32,19 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   className,
+  minWidthClassName = "min-w-[42rem]",
 }: DataTableProps<T>) {
   return (
-    <div className={cn("bg-card rounded-lg shadow-card overflow-hidden", className)}>
+    <div className={cn("overflow-hidden rounded-lg bg-card shadow-card", className)}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm" dir="rtl">
+        <table className={cn("w-full text-sm", minWidthClassName)} dir="rtl">
           <thead>
             <tr className="bg-muted border-b border-border">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    "text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap",
+                    "whitespace-nowrap px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-4",
                     col.className
                   )}
                 >
@@ -56,7 +58,7 @@ export function DataTable<T>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="text-center py-12 text-muted-foreground"
+                  className="px-4 py-12 text-center text-muted-foreground"
                 >
                   {emptyMessage}
                 </td>
@@ -75,7 +77,7 @@ export function DataTable<T>({
                     <td
                       key={col.key}
                       className={cn(
-                        "px-4 py-3 text-right align-middle",
+                        "px-3 py-3 text-right align-middle sm:px-4",
                         col.className
                       )}
                     >
