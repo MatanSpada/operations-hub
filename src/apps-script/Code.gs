@@ -5,6 +5,7 @@
  *
  * Recommended sheet headers:
  * Departments: ID, Name
+ * Driving_Licenses: ID, Name
  * Employees: ID, Name, Department, Status, ReserveStartDate, ReserveEndDate, Phone, Role
  * Vehicles: Plate, VehicleType, Status, CurrentDriver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, Notes
  * Vehicle_Trips: ID, Plate, VehicleType, Driver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, ReturnTime, WorkHours, TreatmentSummary
@@ -21,6 +22,7 @@
 const SHEETS = {
   EMPLOYEES: "Employees",
   DEPARTMENTS: "Departments",
+  DRIVING_LICENSES: "Driving_Licenses",
   VEHICLES: "Vehicles",
   VEHICLE_TRIPS: "Vehicle_Trips",
   CAMP_TASKS: "Camp_Tasks",
@@ -66,6 +68,12 @@ function doPost(e) {
     }
     if (action === "deleteQualification") {
       return deleteQualification_(payload);
+    }
+    if (action === "createDrivingLicense") {
+      return createDrivingLicense_(payload);
+    }
+    if (action === "deleteDrivingLicense") {
+      return deleteDrivingLicense_(payload);
     }
     if (action === "createVehicle") {
       return createVehicle_(payload);
@@ -449,6 +457,45 @@ function deleteQualification_(payload) {
   return jsonResponse_({ success: true });
 }
 
+function createDrivingLicense_(payload) {
+  const licenseId = generateId_();
+  const licenseName = String(payload.name || "").trim();
+
+  if (!licenseName) {
+    throw new Error("Missing driving license name");
+  }
+  if (drivingLicenseExists_(licenseName)) {
+    throw new Error("Driving license already exists");
+  }
+
+  appendRow_(SHEETS.DRIVING_LICENSES, {
+    ID: licenseId,
+    Name: licenseName,
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { licenseId: licenseId },
+  });
+}
+
+function deleteDrivingLicense_(payload) {
+  const license = getDrivingLicenseById_(payload.licenseId);
+  if (!license) {
+    throw new Error("Driving license not found");
+  }
+
+  if (drivingLicenseUsedByVehicles_(license.name)) {
+    throw new Error("Cannot delete driving license used by vehicles");
+  }
+  if (drivingLicenseUsedByVehicleTasks_(license.name)) {
+    throw new Error("Cannot delete driving license used by vehicle history");
+  }
+
+  deleteRow_(SHEETS.DRIVING_LICENSES, "ID", payload.licenseId);
+  return jsonResponse_({ success: true });
+}
+
 function createVehicle_(payload) {
   const plate = String(payload.plate || "").trim();
   const vehicleType = String(payload.vehicleType || "").trim();
@@ -458,6 +505,9 @@ function createVehicle_(payload) {
   }
   if (vehicleExists_(plate)) {
     throw new Error("Vehicle already exists");
+  }
+  if (vehicleType && !drivingLicenseExists_(vehicleType)) {
+    throw new Error("Driving license not found");
   }
 
   appendRow_(SHEETS.VEHICLES, {
@@ -579,6 +629,7 @@ function deleteEmployee_(payload) {
 
 function buildInitialData_() {
   const departmentsRows = getRows_(SHEETS.DEPARTMENTS);
+  const drivingLicenseRows = getRows_(SHEETS.DRIVING_LICENSES);
   const employeesRows = getRows_(SHEETS.EMPLOYEES);
   const vehiclesRows = getRows_(SHEETS.VEHICLES);
   const vehicleTaskRows = getRows_(SHEETS.VEHICLE_TRIPS);
@@ -597,6 +648,7 @@ function buildInitialData_() {
 
   return {
     departments: departmentsRows.map(normalizeDepartment_),
+    drivingLicenses: drivingLicenseRows.map(normalizeDrivingLicense_),
     employees: employeesRows.map(normalizeEmployee_),
     vehicles: vehiclesRows.map(normalizeVehicle_),
     vehicleTasks: vehicleTaskRows.map(normalizeVehicleTask_),
@@ -616,6 +668,13 @@ function buildInitialData_() {
 }
 
 function normalizeDepartment_(row) {
+  return {
+    id: stringValue_(row.ID),
+    name: stringValue_(row.Name),
+  };
+}
+
+function normalizeDrivingLicense_(row) {
   return {
     id: stringValue_(row.ID),
     name: stringValue_(row.Name),
@@ -842,6 +901,7 @@ function closeLatestVehicleTrip_(plate, payload) {
 
   const headers = values[0];
   const plateIndex = headers.indexOf("Plate");
+  const departureTimeIndex = headers.indexOf("DepartureTime");
   const returnTimeIndex = headers.indexOf("ReturnTime");
   const workHoursIndex = headers.indexOf("WorkHours");
   const treatmentSummaryIndex = headers.indexOf("TreatmentSummary");
@@ -853,9 +913,19 @@ function closeLatestVehicleTrip_(plate, payload) {
       String(values[rowIndex][plateIndex]) === String(plate) &&
       !String(values[rowIndex][returnTimeIndex] || "").trim()
     ) {
-      sheet.getRange(rowIndex + 1, returnTimeIndex + 1).setValue(payload.returnTime || new Date().toISOString());
-      if (workHoursIndex !== -1 && payload.workHours !== undefined && payload.workHours !== null && payload.workHours !== "") {
-        sheet.getRange(rowIndex + 1, workHoursIndex + 1).setValue(Number(payload.workHours));
+      var returnTime = payload.returnTime || new Date().toISOString();
+      sheet.getRange(rowIndex + 1, returnTimeIndex + 1).setValue(returnTime);
+      if (workHoursIndex !== -1) {
+        var calculatedWorkHours = payload.workHours;
+        if (calculatedWorkHours === undefined || calculatedWorkHours === null || calculatedWorkHours === "") {
+          calculatedWorkHours = computeHoursBetween_(
+            departureTimeIndex !== -1 ? values[rowIndex][departureTimeIndex] : "",
+            returnTime
+          );
+        }
+        if (calculatedWorkHours !== "") {
+          sheet.getRange(rowIndex + 1, workHoursIndex + 1).setValue(Number(calculatedWorkHours));
+        }
       }
       if (treatmentSummaryIndex !== -1) {
         sheet.getRange(rowIndex + 1, treatmentSummaryIndex + 1).setValue(payload.treatmentSummary || "");
@@ -901,6 +971,19 @@ function getDepartmentById_(departmentId) {
   return null;
 }
 
+function getDrivingLicenseById_(licenseId) {
+  const rows = getRows_(SHEETS.DRIVING_LICENSES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].ID) === String(licenseId)) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+      };
+    }
+  }
+  return null;
+}
+
 function getEmployeeById_(employeeId) {
   const rows = getRows_(SHEETS.EMPLOYEES);
   for (var index = 0; index < rows.length; index++) {
@@ -935,6 +1018,10 @@ function departmentExists_(departmentName) {
 
 function qualificationExists_(qualificationName) {
   return nameExistsInSheet_(SHEETS.QUALIFICATIONS, "Name", qualificationName);
+}
+
+function drivingLicenseExists_(licenseName) {
+  return nameExistsInSheet_(SHEETS.DRIVING_LICENSES, "Name", licenseName);
 }
 
 function vehicleExists_(plate) {
@@ -1081,6 +1168,35 @@ function foodProductHasTransactions_(productId) {
     }
   }
   return false;
+}
+
+function drivingLicenseUsedByVehicles_(licenseName) {
+  const rows = getRows_(SHEETS.VEHICLES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].VehicleType || "").trim() === String(licenseName).trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function drivingLicenseUsedByVehicleTasks_(licenseName) {
+  const rows = getRows_(SHEETS.VEHICLE_TRIPS);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].VehicleType || "").trim() === String(licenseName).trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function computeHoursBetween_(startValue, endValue) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return "";
+  const diff = (end.getTime() - start.getTime()) / 3600000;
+  if (diff < 0) return "";
+  return Number(diff.toFixed(2));
 }
 
 function normalizeMissionType_(value) {

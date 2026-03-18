@@ -2,6 +2,7 @@ import {
   Apartment,
   CampTask,
   Department,
+  DrivingLicense,
   Employee,
   EmployeeQualification,
   EquipmentLedgerEntry,
@@ -84,6 +85,11 @@ export function normalizeInitialData(raw: unknown): InitialData {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
   const departments: Department[] = asRows(source.departments).map((row) => ({
+    id: readString(row, ["id", "ID"]),
+    name: readString(row, ["name", "Name"]),
+  })).sort((a, b) => a.name.localeCompare(b.name, "he"));
+
+  const drivingLicenses: DrivingLicense[] = asRows(source.drivingLicenses).map((row) => ({
     id: readString(row, ["id", "ID"]),
     name: readString(row, ["name", "Name"]),
   })).sort((a, b) => a.name.localeCompare(b.name, "he"));
@@ -265,6 +271,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
   return {
     employees,
     departments,
+    drivingLicenses,
     vehicles,
     vehicleTasks,
     campTasks,

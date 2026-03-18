@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Department,
+  DrivingLicense,
   Employee,
   FoodProduct,
   InitialData,
@@ -29,6 +30,7 @@ import {
   Truck,
   Plus,
   ShieldAlert,
+  KeyRound,
 } from "lucide-react";
 
 interface Props {
@@ -41,7 +43,8 @@ type ManagementSection =
   | "departments"
   | "products"
   | "vehicles"
-  | "qualifications";
+  | "qualifications"
+  | "licenses";
 
 type DeleteTarget = {
   id: string;
@@ -58,7 +61,17 @@ const SECTION_META: Record<
   products: { label: "מוצרים לפי מחלקה", addLabel: "הוספת מוצר", icon: <ShoppingBasket size={16} /> },
   vehicles: { label: "רכבים", addLabel: "הוספת רכב", icon: <Truck size={16} /> },
   qualifications: { label: "הכשרות", addLabel: "הוספת הכשרה", icon: <Award size={16} /> },
+  licenses: { label: "רישיונות נהיגה", addLabel: "הוספת רישיון", icon: <KeyRound size={16} /> },
 };
+
+const SECTION_ORDER: ManagementSection[] = [
+  "employees",
+  "departments",
+  "products",
+  "vehicles",
+  "qualifications",
+  "licenses",
+];
 
 function formatManagementError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
@@ -66,6 +79,7 @@ function formatManagementError(error?: string): string {
   const errorMap: Record<string, string> = {
     "Department already exists": "מחלקה בשם הזה כבר קיימת",
     "Qualification already exists": "הכשרה בשם הזה כבר קיימת",
+    "Driving license already exists": "רישיון בשם הזה כבר קיים",
     "Vehicle already exists": "רכב עם אותה לוחית כבר קיים",
     "Employee already exists": "עובד בשם הזה כבר קיים",
     "Food product already exists": "מוצר בשם הזה כבר קיים",
@@ -77,11 +91,15 @@ function formatManagementError(error?: string): string {
     "Cannot delete a vehicle with an open trip": "לא ניתן למחוק רכב עם נסיעה פתוחה",
     "Cannot delete employee with active equipment loans": "לא ניתן למחוק עובד עם ציוד מושאל פעיל",
     "Cannot delete employee assigned to an active vehicle": "לא ניתן למחוק עובד שמשויך לרכב פעיל",
+    "Cannot delete driving license used by vehicles": "לא ניתן למחוק רישיון שמשויך לרכבים קיימים",
+    "Cannot delete driving license used by vehicle history": "לא ניתן למחוק רישיון שמשויך להיסטוריית משימות",
     "Department not found": "המחלקה שנבחרה לא נמצאה",
+    "Driving license not found": "הרישיון שנבחר לא נמצא",
     "Employee not found": "העובד לא נמצא",
     "Vehicle not found": "הרכב לא נמצא",
     "Missing department name": "יש להזין שם מחלקה",
     "Missing qualification name": "יש להזין שם הכשרה",
+    "Missing driving license name": "יש להזין שם רישיון",
     "Missing employee name": "יש להזין שם עובד",
     "Missing vehicle plate": "יש להזין לוחית רישוי",
     "Missing product name or category": "יש להזין שם מוצר וקטגוריה",
@@ -95,6 +113,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     departments,
     employees,
     qualifications,
+    drivingLicenses,
     employeeQualifications,
     vehicles,
     foodProducts,
@@ -111,6 +130,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const [departmentForm, setDepartmentForm] = useState({ name: "" });
   const [qualificationForm, setQualificationForm] = useState({ name: "" });
+  const [licenseForm, setLicenseForm] = useState({ name: "" });
   const [vehicleForm, setVehicleForm] = useState({ plate: "", vehicleType: "", notes: "" });
   const [employeeForm, setEmployeeForm] = useState({
     name: "",
@@ -161,6 +181,9 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const filteredQualifications = qualifications.filter((qualification) =>
     qualification.name.includes(search)
   );
+  const filteredLicenses = drivingLicenses.filter((license) =>
+    license.name.includes(search)
+  );
   const filteredVehicles = vehicles.filter(
     (vehicle) =>
       vehicle.plate.includes(search) ||
@@ -198,6 +221,12 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         departmentId: departments[0]?.id ?? current.departmentId,
       }));
     }
+    if (section === "vehicles") {
+      setVehicleForm((current) => ({
+        ...current,
+        vehicleType: drivingLicenses[0]?.name ?? current.vehicleType,
+      }));
+    }
   };
 
   const closeCreateModal = () => {
@@ -228,6 +257,16 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
           return;
         }
         setQualificationForm({ name: "" });
+      }
+
+      if (createModal === "licenses") {
+        const result = await api.createDrivingLicenseDetailed(licenseForm.name.trim());
+        if (!result.data) {
+          setActionError(formatManagementError(result.error));
+          setIsSaving(false);
+          return;
+        }
+        setLicenseForm({ name: "" });
       }
 
       if (createModal === "vehicles") {
@@ -305,6 +344,9 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     }
     if (deleteTarget.type === "qualifications") {
       result = await api.deleteQualificationDetailed(deleteTarget.id);
+    }
+    if (deleteTarget.type === "licenses") {
+      result = await api.deleteDrivingLicenseDetailed(deleteTarget.id);
     }
     if (deleteTarget.type === "products") {
       result = await api.deleteFoodProductDetailed(deleteTarget.id);
@@ -411,6 +453,34 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     },
   ];
 
+  const licenseColumns = [
+    { key: "name", header: "רישיון נהיגה" },
+    {
+      key: "vehicleCount",
+      header: "רכבים משויכים",
+      render: (license: DrivingLicense) =>
+        vehicles.filter((vehicle) => vehicle.vehicleType === license.name).length,
+    },
+    {
+      key: "actions",
+      header: "פעולות",
+      render: (license: DrivingLicense) => (
+        <button
+          onClick={() =>
+            setDeleteTarget({
+              id: license.id,
+              label: license.name,
+              type: "licenses",
+            })
+          }
+          className="text-xs text-status-danger-text hover:underline font-medium"
+        >
+          מחק
+        </button>
+      ),
+    },
+  ];
+
   const vehicleColumns = [
     { key: "plate", header: "לוחית רישוי" },
     { key: "vehicleType", header: "סוג רכב" },
@@ -497,6 +567,12 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       emptyMessage: "אין הכשרות להצגה",
       rowKey: (qualification: Qualification) => qualification.id,
     },
+    licenses: {
+      data: filteredLicenses,
+      columns: licenseColumns,
+      emptyMessage: "אין רישיונות להצגה",
+      rowKey: (license: DrivingLicense) => license.id,
+    },
     products: {
       data: filteredProducts,
       columns: productColumns,
@@ -552,6 +628,23 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       );
     }
 
+    if (createModal === "licenses") {
+      return (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">שם רישיון</label>
+            <input
+              type="text"
+              value={licenseForm.name}
+              onChange={(e) => setLicenseForm({ name: e.target.value })}
+              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              dir="rtl"
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (createModal === "vehicles") {
       return (
         <div className="flex flex-col gap-4">
@@ -574,8 +667,11 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
               dir="rtl"
             >
               <option value="">בחר סוג</option>
-              <option value="B">B</option>
-              <option value="C1">C1</option>
+              {drivingLicenses.map((license) => (
+                <option key={license.id} value={license.name}>
+                  {license.name}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex flex-col gap-1">
@@ -710,12 +806,13 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         subtitle="ניהול בטוח של ישויות ליבה, עם הגנות על תלותים ונתונים היסטוריים"
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <SummaryCard label="עובדים" value={employees.length} icon={<Users size={18} />} />
         <SummaryCard label="מחלקות" value={departments.length} icon={<Database size={18} />} />
         <SummaryCard label="מוצרים" value={foodProducts.length} icon={<ShoppingBasket size={18} />} />
         <SummaryCard label="רכבים" value={vehicles.length} icon={<Truck size={18} />} />
         <SummaryCard label="הכשרות" value={qualifications.length} icon={<Award size={18} />} />
+        <SummaryCard label="רישיונות" value={drivingLicenses.length} icon={<KeyRound size={18} />} />
       </div>
 
       <section className="flex items-start gap-3 rounded-lg bg-card p-4 shadow-card sm:p-5">
@@ -729,7 +826,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
       <div className="flex flex-col gap-3 border-b border-border pb-2 xl:flex-row xl:items-end xl:justify-between">
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(SECTION_META) as ManagementSection[]).map((section) => (
+          {SECTION_ORDER.map((section) => (
             <button
               key={section}
               onClick={() => {

@@ -18,6 +18,7 @@ export type TabId =
   | "dashboard"
   | "food"
   | "equipment"
+  | "missions"
   | "vehicles"
   | "workforce"
   | "qualifications"
@@ -38,6 +39,11 @@ export interface Employee {
 
 // ── Departments ──────────────────────────────────────────────────────
 export interface Department {
+  id: string;
+  name: string;
+}
+
+export interface DrivingLicense {
   id: string;
   name: string;
 }
@@ -160,6 +166,7 @@ export interface ApiResponse<T> {
 export interface InitialData {
   employees: Employee[];
   departments: Department[];
+  drivingLicenses: DrivingLicense[];
   vehicles: Vehicle[];
   vehicleTasks: VehicleTask[];
   campTasks: CampTask[];

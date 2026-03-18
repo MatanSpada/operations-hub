@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { CampTask, InitialData, Vehicle, VehicleTask } from "@/types";
+import { InitialData, Vehicle, VehicleTask } from "@/types";
 import { Badge } from "@/components/shared/Badge";
 import { DataTable } from "@/components/shared/DataTable";
 import { Modal } from "@/components/shared/Modal";
@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { api } from "@/api";
 import {
+  combineDateAndTimeToIso,
+  computeDurationHours,
   computeTaskWorkHours,
   downloadCsv,
   endOfWeekIso,
@@ -14,6 +16,8 @@ import {
   formatDateForInput,
   formatDateTime,
   formatHours,
+  formatTimeForInput,
+  getDateTimeInputParts,
   inDateRange,
   startOfWeekIso,
   vehicleMissionTypeLabel,
@@ -26,7 +30,6 @@ import {
   ClipboardList,
   Download,
   FileText,
-  Plus,
   RotateCcw,
   Truck,
   Wrench,
@@ -44,53 +47,35 @@ interface VehicleMissionForm {
   missionType: VehicleTask["missionType"];
   requesterName: string;
   requestingDepartment: string;
+  departureDate: string;
   departureTime: string;
 }
 
 interface VehicleReturnForm {
-  workHours: string;
+  endDate: string;
+  endTime: string;
   treatmentSummary: string;
-}
-
-interface CampTaskForm {
-  date: string;
-  department: string;
-  requesterName: string;
-  mission: string;
-  treatmentSummary: string;
-}
-
-function currentMissionHours(departureTime?: string): string {
-  if (!departureTime) return "";
-  const hours = computeTaskWorkHours({
-    departureTime,
-    returnTime: new Date().toISOString(),
-    workHours: undefined,
-  });
-  return hours !== undefined ? String(hours) : "";
 }
 
 function formatVehicleError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
-  const map: Record<string, string> = {
-    "Missing requester name": "יש להזין שם מבקש",
-    "Missing mission": "יש להזין משימה",
-    "Missing treatment summary": "יש להזין סיכום טיפול",
-  };
-  return map[error] ?? error;
+  if (error === "Driving license not found") {
+    return "סוג הרכב אינו קיים עוד ברשימת הרישיונות המנוהלת";
+  }
+  return error;
 }
 
 export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
-  const { vehicles, vehicleTasks, campTasks, departments } = data;
+  const { vehicles, vehicleTasks, departments } = data;
   const [checkoutModal, setCheckoutModal] = useState<Vehicle | null>(null);
   const [returnModal, setReturnModal] = useState<Vehicle | null>(null);
-  const [campTaskModalOpen, setCampTaskModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reportRange, setReportRange] = useState({
     from: startOfWeekIso(),
     to: endOfWeekIso(),
   });
+  const now = new Date();
   const [missionForm, setMissionForm] = useState<VehicleMissionForm>({
     driver: "",
     departureLocation: "",
@@ -98,17 +83,12 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     missionType: "other",
     requesterName: "",
     requestingDepartment: departments[0]?.name ?? "",
-    departureTime: new Date().toISOString().slice(0, 16),
+    departureDate: formatDateForInput(now),
+    departureTime: formatTimeForInput(now),
   });
   const [returnForm, setReturnForm] = useState<VehicleReturnForm>({
-    workHours: "",
-    treatmentSummary: "",
-  });
-  const [campTaskForm, setCampTaskForm] = useState<CampTaskForm>({
-    date: formatDateForInput(),
-    department: departments[0]?.name ?? "",
-    requesterName: "",
-    mission: "",
+    endDate: formatDateForInput(now),
+    endTime: formatTimeForInput(now),
     treatmentSummary: "",
   });
 
@@ -116,25 +96,18 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
   const inUse = vehicles.filter((vehicle) => vehicle.status === "in_use");
   const maintenance = vehicles.filter((vehicle) => vehicle.status === "maintenance");
 
-  const weeklyVehicleTasks = useMemo(
+  const filteredVehicleTasks = useMemo(
     () =>
       vehicleTasks
+        .filter((task) => !!task.returnTime)
         .filter((task) => inDateRange(task.departureTime, reportRange.from, reportRange.to))
         .sort((a, b) => b.departureTime.localeCompare(a.departureTime)),
     [reportRange.from, reportRange.to, vehicleTasks]
   );
 
-  const weeklyCampTasks = useMemo(
-    () =>
-      campTasks
-        .filter((task) => inDateRange(task.date, reportRange.from, reportRange.to))
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [campTasks, reportRange.from, reportRange.to]
-  );
-
   const vehicleReportRows = useMemo(
     () =>
-      weeklyVehicleTasks.map((task) => ({
+      filteredVehicleTasks.map((task) => ({
         id: task.id,
         date: formatDate(task.departureTime),
         location: task.departureLocation || "—",
@@ -143,30 +116,16 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         missionType: vehicleMissionTypeLabel(task.missionType),
         treatmentSummary: task.treatmentSummary || "—",
       })),
-    [weeklyVehicleTasks]
-  );
-
-  const campReportRows = useMemo(
-    () =>
-      weeklyCampTasks.map((task) => ({
-        id: task.id,
-        date: formatDate(task.date),
-        requester: [task.department, task.requesterName].filter(Boolean).join(" / "),
-        mission: task.mission,
-        treatmentSummary: task.treatmentSummary,
-      })),
-    [weeklyCampTasks]
+    [filteredVehicleTasks]
   );
 
   const recentVehicleTasks = useMemo(
-    () =>
-      [...vehicleTasks]
-        .sort((a, b) => b.departureTime.localeCompare(a.departureTime))
-        .slice(0, 8),
+    () => [...vehicleTasks].sort((a, b) => b.departureTime.localeCompare(a.departureTime)).slice(0, 10),
     [vehicleTasks]
   );
 
   const resetMissionModal = () => {
+    const current = new Date();
     setCheckoutModal(null);
     setActionError(null);
     setMissionForm({
@@ -176,29 +135,46 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
       missionType: "other",
       requesterName: "",
       requestingDepartment: departments[0]?.name ?? "",
-      departureTime: new Date().toISOString().slice(0, 16),
+      departureDate: formatDateForInput(current),
+      departureTime: formatTimeForInput(current),
     });
   };
 
   const openReturnModal = (vehicle: Vehicle) => {
+    const parts = getDateTimeInputParts(new Date().toISOString());
     setReturnModal(vehicle);
     setActionError(null);
     setReturnForm({
-      workHours: currentMissionHours(vehicle.departureTime),
+      endDate: parts.date,
+      endTime: parts.time,
       treatmentSummary: "",
     });
   };
 
   const resetReturnModal = () => {
+    const parts = getDateTimeInputParts(new Date().toISOString());
     setReturnModal(null);
     setActionError(null);
-    setReturnForm({ workHours: "", treatmentSummary: "" });
+    setReturnForm({
+      endDate: parts.date,
+      endTime: parts.time,
+      treatmentSummary: "",
+    });
   };
+
+  const returnDateTimeIso = combineDateAndTimeToIso(returnForm.endDate, returnForm.endTime);
+  const calculatedDuration = computeDurationHours(returnModal?.departureTime, returnDateTimeIso ?? undefined);
 
   const handleCheckout = async () => {
     if (!checkoutModal) return;
     if (!missionForm.driver.trim() || !missionForm.departureLocation.trim() || !missionForm.taskPurpose.trim()) {
       setActionError("יש למלא נהג, נקודת יציאה ותיאור משימה");
+      return;
+    }
+
+    const departureDateTime = combineDateAndTimeToIso(missionForm.departureDate, missionForm.departureTime);
+    if (!departureDateTime) {
+      setActionError("יש להזין תאריך ושעת יציאה תקינים");
       return;
     }
 
@@ -212,9 +188,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
       missionType: missionForm.missionType,
       requesterName: missionForm.requesterName.trim() || undefined,
       requestingDepartment: missionForm.requestingDepartment || undefined,
-      departureTime: missionForm.departureTime
-        ? new Date(missionForm.departureTime).toISOString()
-        : new Date().toISOString(),
+      departureTime: departureDateTime,
     });
     await onRefresh();
     setIsSubmitting(false);
@@ -227,15 +201,21 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
       setActionError("יש להזין סיכום טיפול לסגירת המשימה");
       return;
     }
+    if (!returnDateTimeIso) {
+      setActionError("יש להזין תאריך ושעת סיום תקינים");
+      return;
+    }
+    if (calculatedDuration === undefined) {
+      setActionError("שעת הסיום חייבת להיות אחרי שעת ההתחלה");
+      return;
+    }
 
     setIsSubmitting(true);
     setActionError(null);
-    const workHoursValue = returnForm.workHours.trim();
     const result = await api.returnVehicleDetailed({
       plate: returnModal.plate,
-      workHours: workHoursValue ? Number(workHoursValue) : undefined,
       treatmentSummary: returnForm.treatmentSummary.trim(),
-      returnTime: new Date().toISOString(),
+      returnTime: returnDateTimeIso,
     });
 
     if (!result.data) {
@@ -254,40 +234,6 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     await onRefresh();
   };
 
-  const handleCampTaskCreate = async () => {
-    if (!campTaskForm.requesterName.trim() || !campTaskForm.mission.trim() || !campTaskForm.treatmentSummary.trim()) {
-      setActionError("יש למלא שם מבקש, משימה וסיכום טיפול");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setActionError(null);
-    const result = await api.createCampTaskDetailed({
-      date: campTaskForm.date,
-      department: campTaskForm.department || undefined,
-      requesterName: campTaskForm.requesterName.trim(),
-      mission: campTaskForm.mission.trim(),
-      treatmentSummary: campTaskForm.treatmentSummary.trim(),
-    });
-
-    if (!result.data) {
-      setActionError(formatVehicleError(result.error));
-      setIsSubmitting(false);
-      return;
-    }
-
-    await onRefresh();
-    setIsSubmitting(false);
-    setCampTaskModalOpen(false);
-    setCampTaskForm({
-      date: formatDateForInput(),
-      department: departments[0]?.name ?? "",
-      requesterName: "",
-      mission: "",
-      treatmentSummary: "",
-    });
-  };
-
   const exportVehicleReport = () => {
     downloadCsv("vehicle-missions-report.csv", [
       ["תאריך", "מיקום", "שעות עבודה", "סוג הרכב", "משימה", "סיכום טיפול"],
@@ -297,18 +243,6 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         row.workHours,
         row.vehicleType,
         row.missionType,
-        row.treatmentSummary,
-      ]),
-    ]);
-  };
-
-  const exportCampReport = () => {
-    downloadCsv("camp-tasks-report.csv", [
-      ["תאריך", "מחלקה / שם המבקש", "משימה", "סיכום טיפול"],
-      ...campReportRows.map((row) => [
-        row.date,
-        row.requester,
-        row.mission,
         row.treatmentSummary,
       ]),
     ]);
@@ -391,7 +325,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     },
   ];
 
-  const vehicleReportColumns = [
+  const reportColumns = [
     { key: "date", header: "תאריך" },
     { key: "location", header: "מיקום" },
     { key: "workHours", header: "שעות עבודה" },
@@ -400,27 +334,25 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     { key: "treatmentSummary", header: "סיכום טיפול" },
   ];
 
-  const campReportColumns = [
-    { key: "date", header: "תאריך" },
-    { key: "requester", header: "מחלקה / שם המבקש" },
-    { key: "mission", header: "משימה" },
-    { key: "treatmentSummary", header: "סיכום טיפול" },
-  ];
-
-  const recentTaskColumns = [
+  const historyColumns = [
     {
-      key: "date",
-      header: "תאריך יציאה",
+      key: "departureTime",
+      header: "יציאה",
       render: (task: VehicleTask) => formatDateTime(task.departureTime),
+    },
+    {
+      key: "returnTime",
+      header: "סיום",
+      render: (task: VehicleTask) => formatDateTime(task.returnTime),
     },
     { key: "plate", header: "רכב" },
     { key: "vehicleType", header: "סוג" },
     { key: "departureLocation", header: "מיקום" },
     { key: "taskPurpose", header: "מטרת משימה" },
     {
-      key: "missionType",
-      header: "סוג משימה",
-      render: (task: VehicleTask) => vehicleMissionTypeLabel(task.missionType),
+      key: "workHours",
+      header: "שעות עבודה",
+      render: (task: VehicleTask) => formatHours(computeTaskWorkHours(task)),
     },
     {
       key: "treatmentSummary",
@@ -431,18 +363,13 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <PageHeader title="רכבים" subtitle="ניהול משימות, סגירת טיפולים ודוחות שבועיים" />
+      <PageHeader title="רכבים" subtitle="ניהול משימות רכב, סגירת טיפולים ודוח משימות" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="פנויים" value={available.length} variant="success" icon={<Truck size={18} />} />
         <SummaryCard label="במשימה" value={inUse.length} variant="warning" icon={<ClipboardList size={18} />} />
         <SummaryCard label="תחזוקה" value={maintenance.length} variant="danger" icon={<Wrench size={18} />} />
-        <SummaryCard
-          label="משימות השבוע"
-          value={weeklyVehicleTasks.length}
-          sub={`${weeklyCampTasks.length} משימות שטח בה״ד 6`}
-          icon={<FileText size={18} />}
-        />
+        <SummaryCard label="משימות בטווח שנבחר" value={filteredVehicleTasks.length} icon={<FileText size={18} />} />
       </div>
 
       {inUse.length > 0 && (
@@ -514,13 +441,13 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              דוחות משימות
+              דוח נסיעות ומשימות
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              סינון לפי טווח תאריכים והפקת CSV לדוח נסיעות/משימות ולדוח משימות שטח בה״ד 6
+              סינון לפי טווח תאריכים ויצוא CSV עבור משימות רכב סגורות
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">מתאריך</label>
               <input
@@ -539,104 +466,34 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
                 className="h-10 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+            <button
+              onClick={exportVehicleReport}
+              className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border px-4 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <Download size={14} />
+              יצוא CSV
+            </button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h4 className="text-base font-semibold text-foreground">דוח נסיעות ומשימות</h4>
-                <p className="text-sm text-muted-foreground">תאריך, מיקום, שעות עבודה, סוג רכב, משימה וסיכום טיפול</p>
-              </div>
-              <button
-                onClick={exportVehicleReport}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
-              >
-                <Download size={14} />
-                יצוא CSV
-              </button>
-            </div>
-            <DataTable
-              columns={vehicleReportColumns}
-              data={vehicleReportRows}
-              rowKey={(row) => row.id}
-              emptyMessage="אין משימות בטווח התאריכים שנבחר"
-              minWidthClassName="min-w-[54rem]"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h4 className="text-base font-semibold text-foreground">דוח משימות שטח בה״ד 6</h4>
-                <p className="text-sm text-muted-foreground">תאריך, מחלקה/מבקש, משימה וסיכום טיפול</p>
-              </div>
-              <button
-                onClick={exportCampReport}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
-              >
-                <Download size={14} />
-                יצוא CSV
-              </button>
-            </div>
-            <DataTable
-              columns={campReportColumns}
-              data={campReportRows}
-              rowKey={(row) => row.id}
-              emptyMessage="אין משימות שטח בטווח התאריכים שנבחר"
-              minWidthClassName="min-w-[48rem]"
-            />
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              משימות שטח בה״ד 6
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              רישום משימות ללא רכב לצורך מעקב ודוח מבקשים
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setCampTaskModalOpen(true);
-              setActionError(null);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <Plus size={15} />
-            הוספת משימת שטח
-          </button>
         </div>
         <DataTable
-          columns={[
-            { key: "date", header: "תאריך", render: (task: CampTask) => formatDate(task.date) },
-            { key: "department", header: "מחלקה", render: (task: CampTask) => task.department || "—" },
-            { key: "requesterName", header: "שם המבקש" },
-            { key: "mission", header: "משימה" },
-            { key: "treatmentSummary", header: "סיכום טיפול" },
-          ]}
-          data={[...campTasks].sort((a, b) => b.date.localeCompare(a.date))}
-          rowKey={(task) => task.id}
-          emptyMessage="אין משימות שטח רשומות"
-          minWidthClassName="min-w-[56rem]"
+          columns={reportColumns}
+          data={vehicleReportRows}
+          rowKey={(row) => row.id}
+          emptyMessage="אין משימות בטווח התאריכים שנבחר"
+          minWidthClassName="min-w-[54rem]"
         />
       </section>
 
       <section>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          משימות רכב אחרונות
+          היסטוריית משימות רכב
         </h3>
         <DataTable
-          columns={recentTaskColumns}
+          columns={historyColumns}
           data={recentVehicleTasks}
           rowKey={(task) => task.id}
           emptyMessage="אין משימות רכב מתועדות"
-          minWidthClassName="min-w-[68rem]"
+          minWidthClassName="min-w-[70rem]"
         />
       </section>
 
@@ -692,14 +549,26 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">תאריך ושעת יציאה</label>
-              <input
-                type="datetime-local"
-                value={missionForm.departureTime}
-                onChange={(event) => setMissionForm((current) => ({ ...current, departureTime: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">תאריך יציאה</label>
+                <input
+                  type="date"
+                  value={missionForm.departureDate}
+                  onChange={(event) => setMissionForm((current) => ({ ...current, departureDate: event.target.value }))}
+                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">שעת יציאה</label>
+                <input
+                  type="time"
+                  value={missionForm.departureTime}
+                  onChange={(event) => setMissionForm((current) => ({ ...current, departureTime: event.target.value }))}
+                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  step={60}
+                />
+              </div>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">שם המבקש</label>
@@ -757,16 +626,29 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
             משימה פעילה: <span className="font-medium text-foreground">{returnModal?.taskPurpose || "—"}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">שעות עבודה</label>
-            <input
-              type="number"
-              min={0}
-              step={0.25}
-              value={returnForm.workHours}
-              onChange={(event) => setReturnForm((current) => ({ ...current, workHours: event.target.value }))}
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">תאריך סיום</label>
+              <input
+                type="date"
+                value={returnForm.endDate}
+                onChange={(event) => setReturnForm((current) => ({ ...current, endDate: event.target.value }))}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">שעת סיום</label>
+              <input
+                type="time"
+                value={returnForm.endTime}
+                onChange={(event) => setReturnForm((current) => ({ ...current, endTime: event.target.value }))}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                step={60}
+              />
+            </div>
+          </div>
+          <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            משך מחושב: <span className="font-semibold text-foreground">{formatHours(calculatedDuration)}</span>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">סיכום טיפול</label>
@@ -788,93 +670,6 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
             </button>
             <button
               onClick={resetReturnModal}
-              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
-            >
-              ביטול
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={campTaskModalOpen}
-        onClose={() => {
-          setCampTaskModalOpen(false);
-          setActionError(null);
-        }}
-        title="הוספת משימת שטח בה״ד 6"
-      >
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">תאריך</label>
-              <input
-                type="date"
-                value={campTaskForm.date}
-                onChange={(event) => setCampTaskForm((current) => ({ ...current, date: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">מחלקה</label>
-              <select
-                value={campTaskForm.department}
-                onChange={(event) => setCampTaskForm((current) => ({ ...current, department: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                dir="rtl"
-              >
-                <option value="">בחר מחלקה</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.name}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1 sm:col-span-2">
-              <label className="text-sm font-medium">שם המבקש</label>
-              <input
-                type="text"
-                value={campTaskForm.requesterName}
-                onChange={(event) => setCampTaskForm((current) => ({ ...current, requesterName: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                dir="rtl"
-              />
-            </div>
-            <div className="flex flex-col gap-1 sm:col-span-2">
-              <label className="text-sm font-medium">משימה</label>
-              <input
-                type="text"
-                value={campTaskForm.mission}
-                onChange={(event) => setCampTaskForm((current) => ({ ...current, mission: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                dir="rtl"
-              />
-            </div>
-            <div className="flex flex-col gap-1 sm:col-span-2">
-              <label className="text-sm font-medium">סיכום טיפול</label>
-              <textarea
-                value={campTaskForm.treatmentSummary}
-                onChange={(event) => setCampTaskForm((current) => ({ ...current, treatmentSummary: event.target.value }))}
-                className="min-h-28 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                dir="rtl"
-              />
-            </div>
-          </div>
-          {actionError && <p className="text-sm text-status-danger-text">{actionError}</p>}
-          <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
-            <button
-              onClick={handleCampTaskCreate}
-              disabled={isSubmitting}
-              className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
-            >
-              {isSubmitting ? "שומר..." : "שמור משימה"}
-            </button>
-            <button
-              onClick={() => {
-                setCampTaskModalOpen(false);
-                setActionError(null);
-              }}
               className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול

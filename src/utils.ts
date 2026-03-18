@@ -15,33 +15,78 @@ import { ALERT_THRESHOLDS } from "./config";
 
 // ── Date Utilities ────────────────────────────────────────────────────
 
-/** Format ISO date to Israeli locale (DD.MM.YYYY) */
-export function formatDate(dateStr?: string): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("he-IL");
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
-/** Format ISO datetime to readable Hebrew string */
+function parseDateValue(dateStr?: string): Date | null {
+  if (!dateStr) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  const parsed = new Date(dateStr);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function toLocalDateKey(dateStr?: string): string | null {
+  const date = parseDateValue(dateStr);
+  if (!date) return null;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** Format ISO date to Israeli locale (DD/MM/YYYY) */
+export function formatDate(dateStr?: string): string {
+  const date = parseDateValue(dateStr);
+  if (!date) return "—";
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+export function formatTime(dateStr?: string): string {
+  const date = parseDateValue(dateStr);
+  if (!date) return "—";
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** Format ISO datetime to readable Hebrew string in 24h */
 export function formatDateTime(dateStr?: string): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("he-IL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const date = parseDateValue(dateStr);
+  if (!date) return "—";
+  return `${formatDate(dateStr)} ${formatTime(dateStr)}`;
 }
 
 export function formatDateForInput(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+export function formatTimeForInput(date = new Date()): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+export function getDateTimeInputParts(dateStr?: string): { date: string; time: string } {
+  const date = parseDateValue(dateStr);
+  if (!date) {
+    const now = new Date();
+    return { date: formatDateForInput(now), time: formatTimeForInput(now) };
+  }
+
+  return {
+    date: formatDateForInput(date),
+    time: formatTimeForInput(date),
+  };
+}
+
+export function combineDateAndTimeToIso(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  const [year, month, day] = date.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
 }
 
 export function startOfWeekIso(date = new Date()): string {
@@ -61,9 +106,8 @@ export function endOfWeekIso(date = new Date()): string {
 
 /** Return whole days remaining until endDate (negative = overdue) */
 export function daysRemaining(endDateStr?: string): number | null {
-  if (!endDateStr) return null;
-  const end = new Date(endDateStr);
-  if (isNaN(end.getTime())) return null;
+  const end = parseDateValue(endDateStr);
+  if (!end) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
@@ -72,9 +116,8 @@ export function daysRemaining(endDateStr?: string): number | null {
 
 /** Days since a past date */
 export function daysSince(dateStr?: string): number | null {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
+  const d = parseDateValue(dateStr);
+  if (!d) return null;
   const now = new Date();
   return Math.floor((now.getTime() - d.getTime()) / 86_400_000);
 }
@@ -181,9 +224,19 @@ export function computeTaskWorkHours(task: Pick<VehicleTask, "departureTime" | "
   return Number(diff.toFixed(2));
 }
 
+export function computeDurationHours(startDateTime?: string, endDateTime?: string): number | undefined {
+  if (!startDateTime || !endDateTime) return undefined;
+  const start = parseDateValue(startDateTime);
+  const end = parseDateValue(endDateTime);
+  if (!start || !end) return undefined;
+  const diff = (end.getTime() - start.getTime()) / 3_600_000;
+  if (diff < 0) return undefined;
+  return Number(diff.toFixed(2));
+}
+
 export function inDateRange(dateStr: string | undefined, from?: string, to?: string): boolean {
-  if (!dateStr) return false;
-  const date = dateStr.slice(0, 10);
+  const date = toLocalDateKey(dateStr);
+  if (!date) return false;
   if (from && date < from) return false;
   if (to && date > to) return false;
   return true;

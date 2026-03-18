@@ -15,6 +15,7 @@ The frontend currently operates on one aggregated `InitialData` payload defined 
 
 - `employees`
 - `departments`
+- `drivingLicenses`
 - `vehicles`
 - `vehicleTasks`
 - `campTasks`
@@ -64,7 +65,7 @@ npm run lint
 ## Google Apps Script / Sheets setup
 
 1. Create a Google Sheet with the tabs listed in [`src/config.ts`](/home/matan/Documents/operations-hub/src/config.ts).
-2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs), including the extended `Vehicles`, `Vehicle_Trips`, and `Camp_Tasks` schemas.
+2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs), including the `Driving_Licenses`, extended `Vehicles`, `Vehicle_Trips`, and `Camp_Tasks` schemas.
 3. Paste [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs) into the Apps Script editor attached to the spreadsheet.
 4. Deploy as a Web App:
    1. Execute as: `Me`

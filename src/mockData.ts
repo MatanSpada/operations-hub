@@ -22,6 +22,11 @@ export const MOCK_DATA: InitialData = {
     { id: "d5", name: "ביטחון" },
   ],
 
+  drivingLicenses: [
+    { id: "dl1", name: "B" },
+    { id: "dl2", name: "C1" },
+  ],
+
   // ── Employees ────────────────────────────────────────────────────
   employees: [
     { id: "e1", name: "יוסי כהן", department: "תפעול", status: "active", role: "מנהל צוות" },

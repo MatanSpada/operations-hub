@@ -16,6 +16,7 @@ import { TopHeader } from "@/components/layout/TopHeader";
 import { DashboardPage } from "@/modules/dashboard/DashboardPage";
 import { FoodPage } from "@/modules/food/FoodPage";
 import { EquipmentPage } from "@/modules/equipment/EquipmentPage";
+import { MissionsPage } from "@/modules/missions/MissionsPage";
 import { VehiclesPage } from "@/modules/vehicles/VehiclesPage";
 import { WorkforcePage } from "@/modules/workforce/WorkforcePage";
 import { QualificationsPage } from "@/modules/qualifications/QualificationsPage";
@@ -65,6 +66,7 @@ export default function Index() {
       case "dashboard":     return <DashboardPage data={data} />;
       case "food":          return <FoodPage data={data} onRefresh={load} />;
       case "equipment":     return <EquipmentPage data={data} onRefresh={load} />;
+      case "missions":      return <MissionsPage data={data} onRefresh={load} />;
       case "vehicles":      return <VehiclesPage data={data} onRefresh={load} />;
       case "workforce":     return <WorkforcePage data={data} />;
       case "qualifications":return <QualificationsPage data={data} />;

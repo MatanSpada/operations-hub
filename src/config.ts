@@ -28,6 +28,7 @@ export const IS_GAS_CONFIGURED = GOOGLE_APPS_SCRIPT_URL.length > 0;
 export const SHEET_NAMES = {
   employees: "Employees",
   departments: "Departments",
+  drivingLicenses: "Driving_Licenses",
   vehicles: "Vehicles",
   vehicleTrips: "Vehicle_Trips",
   campTasks: "Camp_Tasks",
@@ -47,6 +48,7 @@ export const TAB_LABELS: Record<string, string> = {
   dashboard: "לוח בקרה",
   food: "מזון ודירות",
   equipment: "ציוד חשמלי",
+  missions: "משימות",
   vehicles: "רכבים",
   workforce: "כוח אדם ומילואים",
   qualifications: "הכשרות",

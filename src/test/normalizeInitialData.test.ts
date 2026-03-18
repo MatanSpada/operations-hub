@@ -5,6 +5,7 @@ describe("normalizeInitialData", () => {
   it("normalizes Apps Script sheet rows into the frontend contract", () => {
     const data = normalizeInitialData({
       departments: [{ ID: "d1", Name: "Operations" }],
+      drivingLicenses: [{ ID: "dl1", Name: "B" }],
       employees: [
         {
           ID: "e1",
@@ -27,6 +28,7 @@ describe("normalizeInitialData", () => {
     });
 
     expect(data.employees[0].reserveEndDate).toBe("2026-03-20");
+    expect(data.drivingLicenses[0].name).toBe("B");
     expect(data.vehicles[0].vehicleType).toBe("B");
     expect(data.vehicleTasks[0].missionType).toBe("fault");
     expect(data.vehicleTasks[0].workHours).toBe(2.5);
@@ -40,6 +42,7 @@ describe("normalizeInitialData", () => {
   it("accepts already-normalized frontend data", () => {
     const data = normalizeInitialData({
       departments: [{ id: "d1", name: "Operations" }],
+      drivingLicenses: [{ id: "dl1", name: "B" }],
       employees: [{ id: "e1", name: "Dana", department: "Operations", status: "active" }],
       vehicles: [{ plate: "123", vehicleType: "B", status: "available" }],
       vehicleTasks: [],
@@ -54,6 +57,7 @@ describe("normalizeInitialData", () => {
     });
 
     expect(data.vehicles[0].plate).toBe("123");
+    expect(data.drivingLicenses[0].name).toBe("B");
     expect(data.vehicles[0].vehicleType).toBe("B");
     expect(data.foodProducts[0].name).toBe("Rice");
   });

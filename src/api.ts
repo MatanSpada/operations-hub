@@ -227,6 +227,12 @@ export const api = {
   deleteQualificationDetailed: (qualificationId: string) =>
     postActionDetailed("deleteQualification", { qualificationId }),
 
+  createDrivingLicenseDetailed: (name: string) =>
+    postActionDetailed<{ licenseId: string }>("createDrivingLicense", { name }),
+
+  deleteDrivingLicenseDetailed: (licenseId: string) =>
+    postActionDetailed("deleteDrivingLicense", { licenseId }),
+
   createVehicleDetailed: (data: {
     plate: string;
     vehicleType?: string;
