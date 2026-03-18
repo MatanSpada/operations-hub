@@ -219,7 +219,7 @@ export const DashboardPage: React.FC<Props> = ({ data }) => {
                 <div className="flex flex-col text-sm">
                   <span className="font-medium">{v.currentDriver}</span>
                   <span className="text-xs text-muted-foreground">
-                    {v.origin} → {v.destination}
+                    {(v.departureLocation || "ללא מיקום")} • {(v.taskPurpose || "ללא משימה")}
                   </span>
                 </div>
               </div>

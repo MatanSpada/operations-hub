@@ -6,8 +6,9 @@
  * Recommended sheet headers:
  * Departments: ID, Name
  * Employees: ID, Name, Department, Status, ReserveStartDate, ReserveEndDate, Phone, Role
- * Vehicles: Plate, Status, CurrentDriver, Origin, Destination, DepartureTime, Notes
- * Vehicle_Trips: ID, Plate, Driver, Origin, Destination, DepartureTime, ReturnTime
+ * Vehicles: Plate, VehicleType, Status, CurrentDriver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, Notes
+ * Vehicle_Trips: ID, Plate, VehicleType, Driver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, ReturnTime, WorkHours, TreatmentSummary
+ * Camp_Tasks: ID, Date, Department, RequesterName, Mission, TreatmentSummary
  * Equipment_Catalog: ID, Name, TotalQuantity
  * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
  * Food_Catalog: ID, Name, Category, Department
@@ -22,6 +23,7 @@ const SHEETS = {
   DEPARTMENTS: "Departments",
   VEHICLES: "Vehicles",
   VEHICLE_TRIPS: "Vehicle_Trips",
+  CAMP_TASKS: "Camp_Tasks",
   EQUIPMENT_CATALOG: "Equipment_Catalog",
   EQUIPMENT_LEDGER: "Equipment_Ledger",
   FOOD_CATALOG: "Food_Catalog",
@@ -68,6 +70,9 @@ function doPost(e) {
     if (action === "createVehicle") {
       return createVehicle_(payload);
     }
+    if (action === "createCampTask") {
+      return createCampTask_(payload);
+    }
     if (action === "deleteVehicle") {
       return deleteVehicle_(payload);
     }
@@ -79,21 +84,31 @@ function doPost(e) {
     }
 
     if (action === "checkoutVehicle") {
+      const missionType = normalizeMissionType_(payload.missionType);
       updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, {
         Status: "in_use",
         CurrentDriver: payload.driver,
-        Origin: payload.origin,
-        Destination: payload.destination,
+        DepartureLocation: payload.departureLocation,
+        TaskPurpose: payload.taskPurpose,
+        MissionType: missionType,
+        RequesterName: payload.requesterName || "",
+        RequestingDepartment: payload.requestingDepartment || "",
         DepartureTime: payload.departureTime,
       });
       appendRow_(SHEETS.VEHICLE_TRIPS, {
         ID: generateId_(),
         Plate: payload.plate,
+        VehicleType: getVehicleType_(payload.plate),
         Driver: payload.driver,
-        Origin: payload.origin,
-        Destination: payload.destination,
+        DepartureLocation: payload.departureLocation,
+        TaskPurpose: payload.taskPurpose,
+        MissionType: missionType,
+        RequesterName: payload.requesterName || "",
+        RequestingDepartment: payload.requestingDepartment || "",
         DepartureTime: payload.departureTime,
         ReturnTime: "",
+        WorkHours: "",
+        TreatmentSummary: "",
       });
       return jsonResponse_({ success: true });
     }
@@ -102,11 +117,14 @@ function doPost(e) {
       updateRow_(SHEETS.VEHICLES, "Plate", payload.plate, {
         Status: "available",
         CurrentDriver: "",
-        Origin: "",
-        Destination: "",
+        DepartureLocation: "",
+        TaskPurpose: "",
+        MissionType: "",
+        RequesterName: "",
+        RequestingDepartment: "",
         DepartureTime: "",
       });
-      closeLatestVehicleTrip_(payload.plate);
+      closeLatestVehicleTrip_(payload.plate, payload);
       return jsonResponse_({ success: true });
     }
 
@@ -433,6 +451,7 @@ function deleteQualification_(payload) {
 
 function createVehicle_(payload) {
   const plate = String(payload.plate || "").trim();
+  const vehicleType = String(payload.vehicleType || "").trim();
 
   if (!plate) {
     throw new Error("Missing vehicle plate");
@@ -443,10 +462,14 @@ function createVehicle_(payload) {
 
   appendRow_(SHEETS.VEHICLES, {
     Plate: plate,
+    VehicleType: vehicleType,
     Status: "available",
     CurrentDriver: "",
-    Origin: "",
-    Destination: "",
+    DepartureLocation: "",
+    TaskPurpose: "",
+    MissionType: "",
+    RequesterName: "",
+    RequestingDepartment: "",
     DepartureTime: "",
     Notes: payload.notes || "",
   });
@@ -454,6 +477,38 @@ function createVehicle_(payload) {
   return jsonResponse_({
     success: true,
     data: { plate: plate },
+  });
+}
+
+function createCampTask_(payload) {
+  const taskId = generateId_();
+  const requesterName = String(payload.requesterName || "").trim();
+  const mission = String(payload.mission || "").trim();
+  const treatmentSummary = String(payload.treatmentSummary || "").trim();
+  const date = String(payload.date || "").trim() || todayIso_();
+
+  if (!requesterName) {
+    throw new Error("Missing requester name");
+  }
+  if (!mission) {
+    throw new Error("Missing mission");
+  }
+  if (!treatmentSummary) {
+    throw new Error("Missing treatment summary");
+  }
+
+  appendRow_(SHEETS.CAMP_TASKS, {
+    ID: taskId,
+    Date: date,
+    Department: payload.department || "",
+    RequesterName: requesterName,
+    Mission: mission,
+    TreatmentSummary: treatmentSummary,
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: { taskId: taskId },
   });
 }
 
@@ -526,6 +581,8 @@ function buildInitialData_() {
   const departmentsRows = getRows_(SHEETS.DEPARTMENTS);
   const employeesRows = getRows_(SHEETS.EMPLOYEES);
   const vehiclesRows = getRows_(SHEETS.VEHICLES);
+  const vehicleTaskRows = getRows_(SHEETS.VEHICLE_TRIPS);
+  const campTaskRows = getRows_(SHEETS.CAMP_TASKS);
   const equipmentTypeRows = getRows_(SHEETS.EQUIPMENT_CATALOG);
   const equipmentLedgerRows = getRows_(SHEETS.EQUIPMENT_LEDGER);
   const foodProductRows = getRows_(SHEETS.FOOD_CATALOG);
@@ -542,6 +599,8 @@ function buildInitialData_() {
     departments: departmentsRows.map(normalizeDepartment_),
     employees: employeesRows.map(normalizeEmployee_),
     vehicles: vehiclesRows.map(normalizeVehicle_),
+    vehicleTasks: vehicleTaskRows.map(normalizeVehicleTask_),
+    campTasks: campTaskRows.map(normalizeCampTask_),
     equipmentTypes: equipmentTypeRows.map(normalizeEquipmentType_),
     equipmentLedger: equipmentLedgerRows.map(function (row) {
       return normalizeEquipmentLedger_(row, equipmentNameById);
@@ -579,12 +638,52 @@ function normalizeEmployee_(row) {
 function normalizeVehicle_(row) {
   return {
     plate: stringValue_(row.Plate),
+    vehicleType: optionalString_(row.VehicleType),
     status: stringValue_(row.Status) || "available",
     currentDriver: optionalString_(row.CurrentDriver),
-    origin: optionalString_(row.Origin),
-    destination: optionalString_(row.Destination),
+    departureLocation: optionalString_(row.DepartureLocation) || optionalString_(row.Origin),
+    taskPurpose: optionalString_(row.TaskPurpose) || optionalString_(row.Destination),
+    missionType: normalizeMissionType_(row.MissionType),
+    requesterName: optionalString_(row.RequesterName),
+    requestingDepartment: optionalString_(row.RequestingDepartment),
     departureTime: optionalString_(row.DepartureTime),
     notes: optionalString_(row.Notes),
+  };
+}
+
+function normalizeVehicleTask_(row) {
+  return {
+    id: stringValue_(row.ID),
+    plate: stringValue_(row.Plate),
+    vehicleType: optionalString_(row.VehicleType),
+    driver: stringValue_(row.Driver),
+    departureLocation:
+      stringValue_(row.DepartureLocation) ||
+      stringValue_(row.Location) ||
+      stringValue_(row.Destination) ||
+      stringValue_(row.Origin),
+    taskPurpose:
+      stringValue_(row.TaskPurpose) ||
+      stringValue_(row.Mission) ||
+      stringValue_(row.Destination),
+    missionType: normalizeMissionType_(row.MissionType),
+    requesterName: optionalString_(row.RequesterName),
+    requestingDepartment: optionalString_(row.RequestingDepartment) || optionalString_(row.Department),
+    departureTime: stringValue_(row.DepartureTime),
+    returnTime: optionalString_(row.ReturnTime),
+    workHours: optionalNumber_(row.WorkHours),
+    treatmentSummary: optionalString_(row.TreatmentSummary),
+  };
+}
+
+function normalizeCampTask_(row) {
+  return {
+    id: stringValue_(row.ID),
+    date: stringValue_(row.Date),
+    department: optionalString_(row.Department),
+    requesterName: stringValue_(row.RequesterName),
+    mission: stringValue_(row.Mission),
+    treatmentSummary: stringValue_(row.TreatmentSummary),
   };
 }
 
@@ -736,7 +835,7 @@ function deleteRow_(sheetName, keyColumn, keyValue, extraFilter) {
   }
 }
 
-function closeLatestVehicleTrip_(plate) {
+function closeLatestVehicleTrip_(plate, payload) {
   const sheet = getSheet_(SHEETS.VEHICLE_TRIPS);
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return;
@@ -744,6 +843,8 @@ function closeLatestVehicleTrip_(plate) {
   const headers = values[0];
   const plateIndex = headers.indexOf("Plate");
   const returnTimeIndex = headers.indexOf("ReturnTime");
+  const workHoursIndex = headers.indexOf("WorkHours");
+  const treatmentSummaryIndex = headers.indexOf("TreatmentSummary");
 
   if (plateIndex === -1 || returnTimeIndex === -1) return;
 
@@ -752,7 +853,13 @@ function closeLatestVehicleTrip_(plate) {
       String(values[rowIndex][plateIndex]) === String(plate) &&
       !String(values[rowIndex][returnTimeIndex] || "").trim()
     ) {
-      sheet.getRange(rowIndex + 1, returnTimeIndex + 1).setValue(new Date().toISOString());
+      sheet.getRange(rowIndex + 1, returnTimeIndex + 1).setValue(payload.returnTime || new Date().toISOString());
+      if (workHoursIndex !== -1 && payload.workHours !== undefined && payload.workHours !== null && payload.workHours !== "") {
+        sheet.getRange(rowIndex + 1, workHoursIndex + 1).setValue(Number(payload.workHours));
+      }
+      if (treatmentSummaryIndex !== -1) {
+        sheet.getRange(rowIndex + 1, treatmentSummaryIndex + 1).setValue(payload.treatmentSummary || "");
+      }
       return;
     }
   }
@@ -815,6 +922,11 @@ function getVehicleByPlate_(plate) {
     }
   }
   return null;
+}
+
+function getVehicleType_(plate) {
+  const vehicle = getVehicleByPlate_(plate);
+  return vehicle ? String(vehicle.VehicleType || "").trim() : "";
 }
 
 function departmentExists_(departmentName) {
@@ -971,6 +1083,12 @@ function foodProductHasTransactions_(productId) {
   return false;
 }
 
+function normalizeMissionType_(value) {
+  return value === "supply" || value === "fault" || value === "other"
+    ? value
+    : "other";
+}
+
 function appendFoodTransaction_(productId, type, quantity, options) {
   const metadata = options || {};
 
@@ -1027,6 +1145,12 @@ function stringValue_(value) {
 function optionalString_(value) {
   const result = stringValue_(value);
   return result ? result : undefined;
+}
+
+function optionalNumber_(value) {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  return isNaN(parsed) ? undefined : parsed;
 }
 
 function numberValue_(value) {

@@ -46,22 +46,41 @@ export interface Department {
 // UPDATE SHEET COLUMN MAP HERE — matches Vehicles sheet columns
 export interface Vehicle {
   plate: string;
+  vehicleType?: string;
   status: "available" | "in_use" | "maintenance"; // ADD NEW VEHICLE STATUSES HERE
   currentDriver?: string;
-  origin?: string;
-  destination?: string;
+  departureLocation?: string;
+  taskPurpose?: string;
+  missionType?: "supply" | "fault" | "other";
+  requesterName?: string;
+  requestingDepartment?: string;
   departureTime?: string;
   notes?: string;             // ADD NEW VEHICLE FIELDS HERE
 }
 
-export interface VehicleTrip {
+export interface VehicleTask {
   id: string;
   plate: string;
+  vehicleType?: string;
   driver: string;
-  origin: string;
-  destination: string;
+  departureLocation: string;
+  taskPurpose: string;
+  missionType: "supply" | "fault" | "other";
+  requesterName?: string;
+  requestingDepartment?: string;
   departureTime: string;
   returnTime?: string;
+  workHours?: number;
+  treatmentSummary?: string;
+}
+
+export interface CampTask {
+  id: string;
+  date: string;
+  department?: string;
+  requesterName: string;
+  mission: string;
+  treatmentSummary: string;
 }
 
 // ── Equipment ────────────────────────────────────────────────────────
@@ -142,6 +161,8 @@ export interface InitialData {
   employees: Employee[];
   departments: Department[];
   vehicles: Vehicle[];
+  vehicleTasks: VehicleTask[];
+  campTasks: CampTask[];
   equipmentTypes: EquipmentType[];
   equipmentLedger: EquipmentLedgerEntry[];
   foodProducts: FoodProduct[];

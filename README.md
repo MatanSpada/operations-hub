@@ -16,6 +16,8 @@ The frontend currently operates on one aggregated `InitialData` payload defined 
 - `employees`
 - `departments`
 - `vehicles`
+- `vehicleTasks`
+- `campTasks`
 - `equipmentTypes`
 - `equipmentLedger`
 - `foodProducts`
@@ -24,7 +26,7 @@ The frontend currently operates on one aggregated `InitialData` payload defined 
 - `qualifications`
 - `employeeQualifications`
 
-`vehicleTrips` exists in the Apps Script backend for audit/history writes, but the current UI does not render it yet.
+`Vehicle_Trips` now feeds the frontend mission/task history and weekly vehicle reports. `Camp_Tasks` stores Bahad 6 field tasks that are not tied to a specific vehicle.
 
 ## Runtime configuration
 
@@ -62,7 +64,7 @@ npm run lint
 ## Google Apps Script / Sheets setup
 
 1. Create a Google Sheet with the tabs listed in [`src/config.ts`](/home/matan/Documents/operations-hub/src/config.ts).
-2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs).
+2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs), including the extended `Vehicles`, `Vehicle_Trips`, and `Camp_Tasks` schemas.
 3. Paste [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs) into the Apps Script editor attached to the spreadsheet.
 4. Deploy as a Web App:
    1. Execute as: `Me`

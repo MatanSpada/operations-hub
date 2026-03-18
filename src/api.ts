@@ -123,10 +123,20 @@ export const api = {
   checkoutVehicle: (data: {
     plate: string;
     driver: string;
-    origin: string;
-    destination: string;
+    departureLocation: string;
+    taskPurpose: string;
+    missionType: "supply" | "fault" | "other";
+    requesterName?: string;
+    requestingDepartment?: string;
     departureTime: string;
   }) => postAction("checkoutVehicle", data),
+
+  returnVehicleDetailed: (data: {
+    plate: string;
+    workHours?: number;
+    treatmentSummary?: string;
+    returnTime?: string;
+  }) => postActionDetailed("returnVehicle", data),
 
   returnVehicle: (plate: string) =>
     postAction("returnVehicle", { plate }),
@@ -219,8 +229,17 @@ export const api = {
 
   createVehicleDetailed: (data: {
     plate: string;
+    vehicleType?: string;
     notes?: string;
   }) => postActionDetailed<{ plate: string }>("createVehicle", data),
+
+  createCampTaskDetailed: (data: {
+    date: string;
+    department?: string;
+    requesterName: string;
+    mission: string;
+    treatmentSummary: string;
+  }) => postActionDetailed<{ taskId: string }>("createCampTask", data),
 
   deleteVehicleDetailed: (plate: string) =>
     postActionDetailed("deleteVehicle", { plate }),

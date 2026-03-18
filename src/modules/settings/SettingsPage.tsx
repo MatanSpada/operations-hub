@@ -111,7 +111,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const [departmentForm, setDepartmentForm] = useState({ name: "" });
   const [qualificationForm, setQualificationForm] = useState({ name: "" });
-  const [vehicleForm, setVehicleForm] = useState({ plate: "", notes: "" });
+  const [vehicleForm, setVehicleForm] = useState({ plate: "", vehicleType: "", notes: "" });
   const [employeeForm, setEmployeeForm] = useState({
     name: "",
     departmentId: departments[0]?.id ?? "",
@@ -164,7 +164,9 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const filteredVehicles = vehicles.filter(
     (vehicle) =>
       vehicle.plate.includes(search) ||
+      vehicle.vehicleType?.includes(search) ||
       vehicle.currentDriver?.includes(search) ||
+      vehicle.taskPurpose?.includes(search) ||
       vehicle.notes?.includes(search)
   );
   const filteredEmployees = employees.filter(
@@ -231,6 +233,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       if (createModal === "vehicles") {
         const result = await api.createVehicleDetailed({
           plate: vehicleForm.plate.trim(),
+          vehicleType: vehicleForm.vehicleType.trim() || undefined,
           notes: vehicleForm.notes.trim() || undefined,
         });
         if (!result.data) {
@@ -238,7 +241,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
           setIsSaving(false);
           return;
         }
-        setVehicleForm({ plate: "", notes: "" });
+        setVehicleForm({ plate: "", vehicleType: "", notes: "" });
       }
 
       if (createModal === "employees") {
@@ -410,6 +413,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const vehicleColumns = [
     { key: "plate", header: "לוחית רישוי" },
+    { key: "vehicleType", header: "סוג רכב" },
     {
       key: "status",
       header: "סטטוס",
@@ -560,6 +564,19 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
               className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               dir="rtl"
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">סוג רכב</label>
+            <select
+              value={vehicleForm.vehicleType}
+              onChange={(e) => setVehicleForm({ ...vehicleForm, vehicleType: e.target.value })}
+              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              dir="rtl"
+            >
+              <option value="">בחר סוג</option>
+              <option value="B">B</option>
+              <option value="C1">C1</option>
+            </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">הערות (אופציונלי)</label>

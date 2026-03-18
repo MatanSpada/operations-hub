@@ -30,6 +30,7 @@ export const SHEET_NAMES = {
   departments: "Departments",
   vehicles: "Vehicles",
   vehicleTrips: "Vehicle_Trips",
+  campTasks: "Camp_Tasks",
   equipmentCatalog: "Equipment_Catalog",
   equipmentLedger: "Equipment_Ledger",
   foodCatalog: "Food_Catalog",

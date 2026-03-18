@@ -14,7 +14,9 @@ describe("normalizeInitialData", () => {
           ReserveEndDate: "2026-03-20",
         },
       ],
-      vehicles: [{ Plate: "123", Status: "in_use", CurrentDriver: "Dana" }],
+      vehicles: [{ Plate: "123", VehicleType: "B", Status: "in_use", CurrentDriver: "Dana", DepartureLocation: "Base", TaskPurpose: "Supply", MissionType: "supply" }],
+      vehicleTrips: [{ ID: "vt1", Plate: "123", VehicleType: "B", Driver: "Dana", DepartureLocation: "North", TaskPurpose: "Repair", MissionType: "fault", DepartureTime: "2026-03-11T08:00:00Z", ReturnTime: "2026-03-11T10:30:00Z", WorkHours: "2.5", TreatmentSummary: "Fixed the issue" }],
+      campTasks: [{ ID: "ct1", Date: "2026-03-11", Department: "Operations", RequesterName: "Dana", Mission: "Camp inspection", TreatmentSummary: "Completed" }],
       equipmentTypes: [{ ID: "eq1", Name: "Generator", TotalQuantity: "3" }],
       equipmentLedger: [{ ID: "l1", EquipmentID: "eq1", Quantity: "1", IssuedTo: "Dana", Department: "Operations", IssueDate: "2026-03-11", Status: "issued" }],
       foodProducts: [{ ID: "f1", Name: "Rice", Category: "Dry" }],
@@ -25,6 +27,10 @@ describe("normalizeInitialData", () => {
     });
 
     expect(data.employees[0].reserveEndDate).toBe("2026-03-20");
+    expect(data.vehicles[0].vehicleType).toBe("B");
+    expect(data.vehicleTasks[0].missionType).toBe("fault");
+    expect(data.vehicleTasks[0].workHours).toBe(2.5);
+    expect(data.campTasks[0].requesterName).toBe("Dana");
     expect(data.equipmentLedger[0].equipmentName).toBe("Generator");
     expect(data.foodTransactions[0].productName).toBe("Rice");
     expect(data.foodTransactions[0].destinationApartmentId).toBe("a1");
@@ -35,7 +41,9 @@ describe("normalizeInitialData", () => {
     const data = normalizeInitialData({
       departments: [{ id: "d1", name: "Operations" }],
       employees: [{ id: "e1", name: "Dana", department: "Operations", status: "active" }],
-      vehicles: [{ plate: "123", status: "available" }],
+      vehicles: [{ plate: "123", vehicleType: "B", status: "available" }],
+      vehicleTasks: [],
+      campTasks: [],
       equipmentTypes: [{ id: "eq1", name: "Generator", totalQuantity: 3 }],
       equipmentLedger: [],
       foodProducts: [{ id: "f1", name: "Rice", category: "Dry" }],
@@ -46,6 +54,7 @@ describe("normalizeInitialData", () => {
     });
 
     expect(data.vehicles[0].plate).toBe("123");
+    expect(data.vehicles[0].vehicleType).toBe("B");
     expect(data.foodProducts[0].name).toBe("Rice");
   });
 });

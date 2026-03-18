@@ -17,6 +17,7 @@ import { SummaryCard } from "@/components/shared/SummaryCard";
 import { Modal } from "@/components/shared/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
+import { SearchInput } from "@/components/shared/SearchInput";
 import {
   calcAvailableQty,
   equipmentStatusLabel,
@@ -72,6 +73,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [issuedToSearch, setIssuedToSearch] = useState("");
   const [createForm, setCreateForm] = useState({
     name: "",
     totalQuantity: "0",
@@ -107,6 +109,21 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       (l) => l.equipmentId === selectedType.id && l.status !== "returned"
     );
   }, [selectedType, equipmentLedger]);
+
+  const activeLedgerRows = useMemo(() => {
+    const normalizedSearch = issuedToSearch.trim();
+    const rows = selectedType
+      ? activeLedger
+      : equipmentLedger.filter((l) => l.status !== "returned");
+
+    if (!normalizedSearch) return rows;
+
+    return rows.filter((entry) =>
+      entry.issuedTo.includes(normalizedSearch) ||
+      entry.department.includes(normalizedSearch) ||
+      entry.equipmentName.includes(normalizedSearch)
+    );
+  }, [activeLedger, equipmentLedger, issuedToSearch, selectedType]);
 
   const resetActionModal = () => {
     setActionItem(null);
@@ -375,18 +392,33 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
 
       {/* Active loans / detail */}
       <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          {selectedType ? `פריטים מושאלים: ${selectedType.name}` : "כל הפריטים המושאלים כעת"}
-        </h3>
+        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              {selectedType ? `פריטים מושאלים: ${selectedType.name}` : "כל הפריטים המושאלים כעת"}
+            </h3>
+            {issuedToSearch.trim() && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                נמצאו {activeLedgerRows.length} רשומות פעילות עבור "{issuedToSearch.trim()}"
+              </p>
+            )}
+          </div>
+          <SearchInput
+            value={issuedToSearch}
+            onChange={setIssuedToSearch}
+            placeholder="חיפוש לפי שם חותם / שואל..."
+            className="w-full lg:w-80"
+          />
+        </div>
         <DataTable
           columns={ledgerColumns}
-          data={
-            selectedType
-              ? activeLedger
-              : equipmentLedger.filter((l) => l.status !== "returned")
-          }
+          data={activeLedgerRows}
           rowKey={(l) => l.id}
-          emptyMessage="אין פריטים מושאלים"
+          emptyMessage={
+            issuedToSearch.trim()
+              ? "לא נמצאו פריטים מושאלים עבור החיפוש הזה"
+              : "אין פריטים מושאלים"
+          }
           minWidthClassName="min-w-[52rem]"
         />
       </section>

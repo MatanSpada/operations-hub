@@ -1,5 +1,6 @@
 import {
   Apartment,
+  CampTask,
   Department,
   Employee,
   EmployeeQualification,
@@ -10,6 +11,7 @@ import {
   InitialData,
   Qualification,
   Vehicle,
+  VehicleTask,
 } from "@/types";
 
 type RawRow = Record<string, unknown>;
@@ -71,6 +73,13 @@ function normalizeFoodTransactionType(type?: string): FoodTransaction["type"] {
   return type === "out" ? "out" : "in";
 }
 
+function normalizeMissionType(value?: string): VehicleTask["missionType"] {
+  if (value === "supply" || value === "fault" || value === "other") {
+    return value;
+  }
+  return "other";
+}
+
 export function normalizeInitialData(raw: unknown): InitialData {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
@@ -122,12 +131,81 @@ export function normalizeInitialData(raw: unknown): InitialData {
 
   const vehicles: Vehicle[] = asRows(source.vehicles).map((row) => ({
     plate: readString(row, ["plate", "Plate"]),
+    vehicleType: readOptionalString(row, ["vehicleType", "VehicleType"]),
     status: normalizeVehicleStatus(readOptionalString(row, ["status", "Status"])),
     currentDriver: readOptionalString(row, ["currentDriver", "CurrentDriver"]),
-    origin: readOptionalString(row, ["origin", "Origin"]),
-    destination: readOptionalString(row, ["destination", "Destination"]),
+    departureLocation: readOptionalString(row, [
+      "departureLocation",
+      "DepartureLocation",
+      "origin",
+      "Origin",
+    ]),
+    taskPurpose: readOptionalString(row, [
+      "taskPurpose",
+      "TaskPurpose",
+      "destination",
+      "Destination",
+    ]),
+    missionType: normalizeMissionType(readOptionalString(row, ["missionType", "MissionType"])),
+    requesterName: readOptionalString(row, ["requesterName", "RequesterName"]),
+    requestingDepartment: readOptionalString(row, [
+      "requestingDepartment",
+      "RequestingDepartment",
+    ]),
     departureTime: readOptionalString(row, ["departureTime", "DepartureTime"]),
     notes: readOptionalString(row, ["notes", "Notes"]),
+  }));
+
+  const vehicleTasks: VehicleTask[] = asRows(
+    source.vehicleTasks ?? source.vehicleTrips
+  ).map((row) => {
+    const workHours = readNumber(row, ["workHours", "WorkHours"], NaN);
+
+    return {
+      id: readString(row, ["id", "ID"]),
+      plate: readString(row, ["plate", "Plate"]),
+      vehicleType: readOptionalString(row, ["vehicleType", "VehicleType"]),
+      driver: readString(row, ["driver", "Driver"]),
+      departureLocation: readString(row, [
+        "departureLocation",
+        "DepartureLocation",
+        "location",
+        "Location",
+        "destination",
+        "Destination",
+        "origin",
+        "Origin",
+      ]),
+      taskPurpose: readString(row, [
+        "taskPurpose",
+        "TaskPurpose",
+        "mission",
+        "Mission",
+        "destination",
+        "Destination",
+      ]),
+      missionType: normalizeMissionType(readOptionalString(row, ["missionType", "MissionType"])),
+      requesterName: readOptionalString(row, ["requesterName", "RequesterName"]),
+      requestingDepartment: readOptionalString(row, [
+        "requestingDepartment",
+        "RequestingDepartment",
+        "department",
+        "Department",
+      ]),
+      departureTime: readString(row, ["departureTime", "DepartureTime"]),
+      returnTime: readOptionalString(row, ["returnTime", "ReturnTime"]),
+      workHours: Number.isFinite(workHours) ? workHours : undefined,
+      treatmentSummary: readOptionalString(row, ["treatmentSummary", "TreatmentSummary"]),
+    };
+  });
+
+  const campTasks: CampTask[] = asRows(source.campTasks).map((row) => ({
+    id: readString(row, ["id", "ID"]),
+    date: readString(row, ["date", "Date"]),
+    department: readOptionalString(row, ["department", "Department"]),
+    requesterName: readString(row, ["requesterName", "RequesterName"]),
+    mission: readString(row, ["mission", "Mission"]),
+    treatmentSummary: readString(row, ["treatmentSummary", "TreatmentSummary"]),
   }));
 
   const equipmentLedger: EquipmentLedgerEntry[] = asRows(source.equipmentLedger).map((row) => {
@@ -188,6 +266,8 @@ export function normalizeInitialData(raw: unknown): InitialData {
     employees,
     departments,
     vehicles,
+    vehicleTasks,
+    campTasks,
     equipmentTypes,
     equipmentLedger,
     foodProducts,

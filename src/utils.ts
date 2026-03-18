@@ -10,7 +10,7 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-import { BadgeVariant } from "./types";
+import { BadgeVariant, VehicleTask } from "./types";
 import { ALERT_THRESHOLDS } from "./config";
 
 // ── Date Utilities ────────────────────────────────────────────────────
@@ -35,6 +35,28 @@ export function formatDateTime(dateStr?: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export function formatDateForInput(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function startOfWeekIso(date = new Date()): string {
+  const current = new Date(date);
+  const day = current.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  current.setDate(current.getDate() + diff);
+  current.setHours(0, 0, 0, 0);
+  return formatDateForInput(current);
+}
+
+export function endOfWeekIso(date = new Date()): string {
+  const current = new Date(startOfWeekIso(date));
+  current.setDate(current.getDate() + 6);
+  return formatDateForInput(current);
 }
 
 /** Return whole days remaining until endDate (negative = overdue) */
@@ -116,6 +138,74 @@ export function formatQuantity(quantity: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+}
+
+export function formatHours(hours?: number): string {
+  if (hours === undefined || hours === null || Number.isNaN(hours)) return "—";
+  return Number.isInteger(hours) ? String(hours) : hours.toLocaleString("he-IL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function vehicleMissionTypeLabel(type?: VehicleTask["missionType"]): string {
+  const map: Record<VehicleTask["missionType"], string> = {
+    supply: "תספוק",
+    fault: "תקלה",
+    other: "אחר",
+  };
+  return map[type ?? "other"] ?? "אחר";
+}
+
+export function vehicleMissionTypeOptions(): Array<{
+  value: VehicleTask["missionType"];
+  label: string;
+}> {
+  return [
+    { value: "supply", label: "תספוק" },
+    { value: "fault", label: "תקלה" },
+    { value: "other", label: "אחר" },
+  ];
+}
+
+export function computeTaskWorkHours(task: Pick<VehicleTask, "departureTime" | "returnTime" | "workHours">): number | undefined {
+  if (task.workHours !== undefined && Number.isFinite(task.workHours)) {
+    return task.workHours;
+  }
+  if (!task.departureTime || !task.returnTime) return undefined;
+  const start = new Date(task.departureTime);
+  const end = new Date(task.returnTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return undefined;
+  const diff = (end.getTime() - start.getTime()) / 3_600_000;
+  if (diff <= 0) return undefined;
+  return Number(diff.toFixed(2));
+}
+
+export function inDateRange(dateStr: string | undefined, from?: string, to?: string): boolean {
+  if (!dateStr) return false;
+  const date = dateStr.slice(0, 10);
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return true;
+}
+
+export function downloadCsv(filename: string, rows: string[][]): void {
+  const csv = rows
+    .map((row) =>
+      row
+        .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    )
+    .join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export function isApartmentStale(lastSupplied?: string): boolean {

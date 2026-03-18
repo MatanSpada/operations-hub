@@ -38,11 +38,22 @@ export const MOCK_DATA: InitialData = {
 
   // ── Vehicles ─────────────────────────────────────────────────────
   vehicles: [
-    { plate: "123-45-678", status: "available" },
-    { plate: "987-65-432", status: "in_use", currentDriver: "יוסי כהן", origin: "בסיס", destination: "מחסן מרכזי", departureTime: "2025-03-11T08:30" },
-    { plate: "456-78-901", status: "in_use", currentDriver: "דוד מזרחי", origin: "מחסן מרכזי", destination: "אתר צפון", departureTime: "2025-03-11T07:00" },
-    { plate: "234-56-789", status: "maintenance", notes: "טיפול שוטף - מוסך" },
-    { plate: "345-67-890", status: "available" },
+    { plate: "123-45-678", vehicleType: "B", status: "available" },
+    { plate: "987-65-432", vehicleType: "C1", status: "in_use", currentDriver: "יוסי כהן", departureLocation: "בסיס", taskPurpose: "אספקת ציוד למחסן מרכזי", missionType: "supply", requestingDepartment: "לוגיסטיקה", requesterName: "רחל לוי", departureTime: "2025-03-11T08:30" },
+    { plate: "456-78-901", vehicleType: "B", status: "in_use", currentDriver: "דוד מזרחי", departureLocation: "מחסן מרכזי", taskPurpose: "טיפול בתקלה באתר צפון", missionType: "fault", requestingDepartment: "אחזקה", requesterName: "אמיר בן דוד", departureTime: "2025-03-11T07:00" },
+    { plate: "234-56-789", vehicleType: "C1", status: "maintenance", notes: "טיפול שוטף - מוסך" },
+    { plate: "345-67-890", vehicleType: "B", status: "available" },
+  ],
+
+  vehicleTasks: [
+    { id: "vt1", plate: "987-65-432", vehicleType: "C1", driver: "יוסי כהן", departureLocation: "מחסן מרכזי", taskPurpose: "אספקת ציוד למתחם דרום", missionType: "supply", requestingDepartment: "לוגיסטיקה", requesterName: "רחל לוי", departureTime: "2025-03-10T08:30", returnTime: "2025-03-10T12:30", workHours: 4, treatmentSummary: "בוצעה אספקה מלאה למחסן היעד" },
+    { id: "vt2", plate: "456-78-901", vehicleType: "B", driver: "דוד מזרחי", departureLocation: "בה״ד 6", taskPurpose: "טיפול בתקלה במערכת חשמל", missionType: "fault", requestingDepartment: "אחזקה", requesterName: "אמיר בן דוד", departureTime: "2025-03-09T07:00", returnTime: "2025-03-09T10:30", workHours: 3.5, treatmentSummary: "הוחלף פיוז והמערכת חזרה לעבודה" },
+    { id: "vt3", plate: "345-67-890", vehicleType: "B", driver: "מיכל אברהם", departureLocation: "שער מערבי", taskPurpose: "סיור ובדיקת אזור", missionType: "other", requestingDepartment: "תפעול", requesterName: "גיל פרידמן", departureTime: "2025-03-08T09:15", returnTime: "2025-03-08T11:15", workHours: 2, treatmentSummary: "בוצעה בדיקה והועבר דיווח מסכם" },
+  ],
+
+  campTasks: [
+    { id: "ct1", date: "2025-03-10", department: "לוגיסטיקה", requesterName: "רחל לוי", mission: "טיפול בבקשת ציוד למתחם השדה", treatmentSummary: "הציוד הוכן והועבר לנקודת החלוקה" },
+    { id: "ct2", date: "2025-03-09", department: "אחזקה", requesterName: "אמיר בן דוד", mission: "בדיקת תקלה בתאורת שטח", treatmentSummary: "בוצע תיקון זמני והוזמן חלק חלופי" },
   ],
 
   // ── Equipment Types ───────────────────────────────────────────────
