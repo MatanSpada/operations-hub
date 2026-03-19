@@ -25,6 +25,7 @@ describe("normalizeInitialData", () => {
       apartments: [{ ID: "a1", Name: "Apartment A", LastSupplied: "2026-03-10" }],
       qualifications: [{ ID: "q1", Name: "License" }],
       employeeQualifications: [{ EmployeeID: "e1", QualificationID: "q1" }],
+      employeeDrivingLicenses: [{ EmployeeID: "e1", DrivingLicenseID: "dl1" }],
     });
 
     expect(data.employees[0].reserveEndDate).toBe("2026-03-20");
@@ -37,6 +38,7 @@ describe("normalizeInitialData", () => {
     expect(data.foodTransactions[0].productName).toBe("Rice");
     expect(data.foodTransactions[0].destinationApartmentId).toBe("a1");
     expect(data.foodTransactions[0].destination).toBe("Apartment A");
+    expect(data.employeeDrivingLicenses[0].drivingLicenseId).toBe("dl1");
   });
 
   it("accepts already-normalized frontend data", () => {
@@ -54,6 +56,7 @@ describe("normalizeInitialData", () => {
       apartments: [{ id: "a1", name: "Apartment A" }],
       qualifications: [{ id: "q1", name: "License" }],
       employeeQualifications: [],
+      employeeDrivingLicenses: [],
     });
 
     expect(data.vehicles[0].plate).toBe("123");

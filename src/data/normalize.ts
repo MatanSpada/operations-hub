@@ -5,6 +5,7 @@ import {
   DrivingLicense,
   Employee,
   EmployeeQualification,
+  EmployeeDrivingLicense,
   EquipmentLedgerEntry,
   EquipmentType,
   FoodProduct,
@@ -211,7 +212,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
     department: readOptionalString(row, ["department", "Department"]),
     requesterName: readString(row, ["requesterName", "RequesterName"]),
     mission: readString(row, ["mission", "Mission"]),
-    treatmentSummary: readString(row, ["treatmentSummary", "TreatmentSummary"]),
+    treatmentSummary: readOptionalString(row, ["treatmentSummary", "TreatmentSummary"]),
   }));
 
   const equipmentLedger: EquipmentLedgerEntry[] = asRows(source.equipmentLedger).map((row) => {
@@ -268,6 +269,13 @@ export function normalizeInitialData(raw: unknown): InitialData {
     qualificationId: readString(row, ["qualificationId", "QualificationID"]),
   }));
 
+  const employeeDrivingLicenses: EmployeeDrivingLicense[] = asRows(
+    source.employeeDrivingLicenses
+  ).map((row) => ({
+    employeeId: readString(row, ["employeeId", "EmployeeID"]),
+    drivingLicenseId: readString(row, ["drivingLicenseId", "DrivingLicenseID"]),
+  }));
+
   return {
     employees,
     departments,
@@ -282,5 +290,6 @@ export function normalizeInitialData(raw: unknown): InitialData {
     apartments,
     qualifications,
     employeeQualifications,
+    employeeDrivingLicenses,
   };
 }

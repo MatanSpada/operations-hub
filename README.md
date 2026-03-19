@@ -16,6 +16,7 @@ The frontend currently operates on one aggregated `InitialData` payload defined 
 - `employees`
 - `departments`
 - `drivingLicenses`
+- `employeeDrivingLicenses`
 - `vehicles`
 - `vehicleTasks`
 - `campTasks`
@@ -27,7 +28,7 @@ The frontend currently operates on one aggregated `InitialData` payload defined 
 - `qualifications`
 - `employeeQualifications`
 
-`Vehicle_Trips` now feeds the frontend mission/task history and weekly vehicle reports. `Camp_Tasks` stores Bahad 6 field tasks that are not tied to a specific vehicle.
+`Vehicle_Trips` now feeds the frontend mission/task history and weekly vehicle reports. `Camp_Tasks` stores Bahad 6 field tasks that are not tied to a specific vehicle. `Employee_Driving_Licenses` stores employee-to-license assignments for workforce editing and smart exports.
 
 ## Runtime configuration
 
@@ -61,11 +62,12 @@ npm run lint
 - [`src/api.ts`](/home/matan/Documents/operations-hub/src/api.ts) fetches the Apps Script payload and normalizes it.
 - [`src/data/normalize.ts`](/home/matan/Documents/operations-hub/src/data/normalize.ts) converts raw sheet rows or camelCase objects into the typed frontend contract.
 - Module pages derive their own summaries/tables from the in-memory `InitialData` object.
+- Data Management now centralizes CSV exports for all major tables and filtered employee subsets.
 
 ## Google Apps Script / Sheets setup
 
 1. Create a Google Sheet with the tabs listed in [`src/config.ts`](/home/matan/Documents/operations-hub/src/config.ts).
-2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs), including the `Driving_Licenses`, extended `Vehicles`, `Vehicle_Trips`, and `Camp_Tasks` schemas.
+2. Use the header names documented at the top of [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs), including the `Driving_Licenses`, `Employee_Driving_Licenses`, extended `Vehicles`, `Vehicle_Trips`, and `Camp_Tasks` schemas.
 3. Paste [`src/apps-script/Code.gs`](/home/matan/Documents/operations-hub/src/apps-script/Code.gs) into the Apps Script editor attached to the spreadsheet.
 4. Deploy as a Web App:
    1. Execute as: `Me`

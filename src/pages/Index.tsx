@@ -68,7 +68,7 @@ export default function Index() {
       case "equipment":     return <EquipmentPage data={data} onRefresh={load} />;
       case "missions":      return <MissionsPage data={data} onRefresh={load} />;
       case "vehicles":      return <VehiclesPage data={data} onRefresh={load} />;
-      case "workforce":     return <WorkforcePage data={data} />;
+      case "workforce":     return <WorkforcePage data={data} onRefresh={load} />;
       case "qualifications":return <QualificationsPage data={data} />;
       case "settings":      return <SettingsPage data={data} onRefresh={load} />;
       default:              return null;

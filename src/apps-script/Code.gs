@@ -17,6 +17,7 @@
  * Apartments: ID, Name, LastSupplied
  * Qualifications: ID, Name
  * Employee_Qualifications: EmployeeID, QualificationID
+ * Employee_Driving_Licenses: EmployeeID, DrivingLicenseID
  */
 
 const SHEETS = {
@@ -33,6 +34,7 @@ const SHEETS = {
   APARTMENTS: "Apartments",
   QUALIFICATIONS: "Qualifications",
   EMPLOYEE_QUALIFICATIONS: "Employee_Qualifications",
+  EMPLOYEE_DRIVING_LICENSES: "Employee_Driving_Licenses",
 };
 
 function doGet(e) {
@@ -81,11 +83,20 @@ function doPost(e) {
     if (action === "createCampTask") {
       return createCampTask_(payload);
     }
+    if (action === "updateCampTask") {
+      return updateCampTask_(payload);
+    }
+    if (action === "deleteCampTask") {
+      return deleteCampTask_(payload);
+    }
     if (action === "deleteVehicle") {
       return deleteVehicle_(payload);
     }
     if (action === "createEmployee") {
       return createEmployee_(payload);
+    }
+    if (action === "updateEmployee") {
+      return updateEmployee_(payload);
     }
     if (action === "deleteEmployee") {
       return deleteEmployee_(payload);
@@ -492,6 +503,7 @@ function deleteDrivingLicense_(payload) {
     throw new Error("Cannot delete driving license used by vehicle history");
   }
 
+  deleteRow_(SHEETS.EMPLOYEE_DRIVING_LICENSES, "DrivingLicenseID", payload.licenseId);
   deleteRow_(SHEETS.DRIVING_LICENSES, "ID", payload.licenseId);
   return jsonResponse_({ success: true });
 }
@@ -543,9 +555,6 @@ function createCampTask_(payload) {
   if (!mission) {
     throw new Error("Missing mission");
   }
-  if (!treatmentSummary) {
-    throw new Error("Missing treatment summary");
-  }
 
   appendRow_(SHEETS.CAMP_TASKS, {
     ID: taskId,
@@ -560,6 +569,44 @@ function createCampTask_(payload) {
     success: true,
     data: { taskId: taskId },
   });
+}
+
+function updateCampTask_(payload) {
+  const taskId = String(payload.taskId || "").trim();
+  const requesterName = String(payload.requesterName || "").trim();
+  const mission = String(payload.mission || "").trim();
+  const treatmentSummary = String(payload.treatmentSummary || "").trim();
+  const date = String(payload.date || "").trim() || todayIso_();
+
+  if (!taskId) {
+    throw new Error("Missing camp task ID");
+  }
+  if (!requesterName) {
+    throw new Error("Missing requester name");
+  }
+  if (!mission) {
+    throw new Error("Missing mission");
+  }
+  if (!updateRow_(SHEETS.CAMP_TASKS, "ID", taskId, {
+    Date: date,
+    Department: payload.department || "",
+    RequesterName: requesterName,
+    Mission: mission,
+    TreatmentSummary: treatmentSummary,
+  })) {
+    throw new Error("Camp task not found");
+  }
+
+  return jsonResponse_({ success: true });
+}
+
+function deleteCampTask_(payload) {
+  const taskId = String(payload.taskId || "").trim();
+  if (!taskId) {
+    throw new Error("Missing camp task ID");
+  }
+  deleteRow_(SHEETS.CAMP_TASKS, "ID", taskId);
+  return jsonResponse_({ success: true });
 }
 
 function deleteVehicle_(payload) {
@@ -604,10 +651,58 @@ function createEmployee_(payload) {
     Role: payload.role || "",
   });
 
+  syncEmployeeAssignments_(
+    employeeId,
+    payload.qualificationIds || [],
+    payload.drivingLicenseIds || []
+  );
+
   return jsonResponse_({
     success: true,
     data: { employeeId: employeeId },
   });
+}
+
+function updateEmployee_(payload) {
+  const employeeId = String(payload.employeeId || "").trim();
+  const employee = getEmployeeById_(employeeId);
+  const employeeName = String(payload.name || "").trim();
+  const department = getDepartmentById_(payload.departmentId);
+  const status = normalizeEmployeeStatus_(payload.status);
+
+  if (!employeeId) {
+    throw new Error("Missing employee ID");
+  }
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+  if (!employeeName) {
+    throw new Error("Missing employee name");
+  }
+  if (!department) {
+    throw new Error("Department not found");
+  }
+  if (employeeExistsOtherThan_(employeeName, employeeId)) {
+    throw new Error("Employee already exists");
+  }
+
+  updateRow_(SHEETS.EMPLOYEES, "ID", employeeId, {
+    Name: employeeName,
+    Department: department.name,
+    Status: status,
+    ReserveStartDate: status === "reserve" ? payload.reserveStartDate || "" : "",
+    ReserveEndDate: status === "reserve" ? payload.reserveEndDate || "" : "",
+    Phone: payload.phone || "",
+    Role: payload.role || "",
+  });
+
+  syncEmployeeAssignments_(
+    employeeId,
+    payload.qualificationIds || [],
+    payload.drivingLicenseIds || []
+  );
+
+  return jsonResponse_({ success: true });
 }
 
 function deleteEmployee_(payload) {
@@ -623,6 +718,7 @@ function deleteEmployee_(payload) {
   }
 
   deleteRow_(SHEETS.EMPLOYEE_QUALIFICATIONS, "EmployeeID", payload.employeeId);
+  deleteRow_(SHEETS.EMPLOYEE_DRIVING_LICENSES, "EmployeeID", payload.employeeId);
   deleteRow_(SHEETS.EMPLOYEES, "ID", payload.employeeId);
   return jsonResponse_({ success: true });
 }
@@ -641,6 +737,7 @@ function buildInitialData_() {
   const apartmentsRows = getRows_(SHEETS.APARTMENTS);
   const qualificationRows = getRows_(SHEETS.QUALIFICATIONS);
   const employeeQualificationRows = getRows_(SHEETS.EMPLOYEE_QUALIFICATIONS);
+  const employeeDrivingLicenseRows = getRows_(SHEETS.EMPLOYEE_DRIVING_LICENSES);
 
   const equipmentNameById = indexByField_(equipmentTypeRows, "ID", "Name");
   const productNameById = indexByField_(foodProductRows, "ID", "Name");
@@ -664,6 +761,7 @@ function buildInitialData_() {
     apartments: apartmentsRows.map(normalizeApartment_),
     qualifications: qualificationRows.map(normalizeQualification_),
     employeeQualifications: employeeQualificationRows.map(normalizeEmployeeQualification_),
+    employeeDrivingLicenses: employeeDrivingLicenseRows.map(normalizeEmployeeDrivingLicense_),
   };
 }
 
@@ -818,6 +916,13 @@ function normalizeEmployeeQualification_(row) {
   return {
     employeeId: stringValue_(row.EmployeeID),
     qualificationId: stringValue_(row.QualificationID),
+  };
+}
+
+function normalizeEmployeeDrivingLicense_(row) {
+  return {
+    employeeId: stringValue_(row.EmployeeID),
+    drivingLicenseId: stringValue_(row.DrivingLicenseID),
   };
 }
 
@@ -991,6 +1096,12 @@ function getEmployeeById_(employeeId) {
       return {
         id: String(rows[index].ID),
         name: String(rows[index].Name),
+        department: String(rows[index].Department || ""),
+        status: String(rows[index].Status || "active"),
+        reserveStartDate: String(rows[index].ReserveStartDate || ""),
+        reserveEndDate: String(rows[index].ReserveEndDate || ""),
+        phone: String(rows[index].Phone || ""),
+        role: String(rows[index].Role || ""),
       };
     }
   }
@@ -1036,6 +1147,20 @@ function vehicleExists_(plate) {
 
 function employeeExists_(employeeName) {
   return nameExistsInSheet_(SHEETS.EMPLOYEES, "Name", employeeName);
+}
+
+function employeeExistsOtherThan_(employeeName, employeeId) {
+  const normalizedName = String(employeeName || "").trim().toLowerCase();
+  const rows = getRows_(SHEETS.EMPLOYEES);
+  for (var index = 0; index < rows.length; index++) {
+    if (
+      String(rows[index].ID) !== String(employeeId) &&
+      String(rows[index].Name || "").trim().toLowerCase() === normalizedName
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function equipmentTypeExists_(equipmentName) {
@@ -1190,6 +1315,67 @@ function drivingLicenseUsedByVehicleTasks_(licenseName) {
   return false;
 }
 
+function syncEmployeeAssignments_(employeeId, qualificationIds, drivingLicenseIds) {
+  const nextQualificationIds = normalizeIdArray_(qualificationIds);
+  const nextDrivingLicenseIds = normalizeIdArray_(drivingLicenseIds);
+
+  validateQualificationIds_(nextQualificationIds);
+  validateDrivingLicenseIds_(nextDrivingLicenseIds);
+
+  replaceAssignmentRows_(
+    SHEETS.EMPLOYEE_QUALIFICATIONS,
+    "QualificationID",
+    employeeId,
+    nextQualificationIds
+  );
+  replaceAssignmentRows_(
+    SHEETS.EMPLOYEE_DRIVING_LICENSES,
+    "DrivingLicenseID",
+    employeeId,
+    nextDrivingLicenseIds
+  );
+}
+
+function replaceAssignmentRows_(sheetName, valueColumn, employeeId, values) {
+  deleteRow_(sheetName, "EmployeeID", employeeId);
+  values.forEach(function (value) {
+    appendRow_(sheetName, {
+      EmployeeID: employeeId,
+      [valueColumn]: value,
+    });
+  });
+}
+
+function normalizeIdArray_(values) {
+  const list = Array.isArray(values) ? values : [];
+  const seen = {};
+  return list.reduce(function (output, value) {
+    const normalized = String(value || "").trim();
+    if (!normalized || seen[normalized]) {
+      return output;
+    }
+    seen[normalized] = true;
+    output.push(normalized);
+    return output;
+  }, []);
+}
+
+function validateQualificationIds_(qualificationIds) {
+  qualificationIds.forEach(function (qualificationId) {
+    if (!findValueById_(SHEETS.QUALIFICATIONS, qualificationId, "Name")) {
+      throw new Error("Qualification not found");
+    }
+  });
+}
+
+function validateDrivingLicenseIds_(drivingLicenseIds) {
+  drivingLicenseIds.forEach(function (drivingLicenseId) {
+    if (!findValueById_(SHEETS.DRIVING_LICENSES, drivingLicenseId, "Name")) {
+      throw new Error("Driving license not found");
+    }
+  });
+}
+
 function computeHoursBetween_(startValue, endValue) {
   const start = new Date(startValue);
   const end = new Date(endValue);
@@ -1203,6 +1389,10 @@ function normalizeMissionType_(value) {
   return value === "supply" || value === "fault" || value === "other"
     ? value
     : "other";
+}
+
+function normalizeEmployeeStatus_(value) {
+  return value === "reserve" || value === "inactive" ? value : "active";
 }
 
 function appendFoodTransaction_(productId, type, quantity, options) {

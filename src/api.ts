@@ -244,8 +244,20 @@ export const api = {
     department?: string;
     requesterName: string;
     mission: string;
-    treatmentSummary: string;
+    treatmentSummary?: string;
   }) => postActionDetailed<{ taskId: string }>("createCampTask", data),
+
+  updateCampTaskDetailed: (data: {
+    taskId: string;
+    date: string;
+    department?: string;
+    requesterName: string;
+    mission: string;
+    treatmentSummary?: string;
+  }) => postActionDetailed("updateCampTask", data),
+
+  deleteCampTaskDetailed: (taskId: string) =>
+    postActionDetailed("deleteCampTask", { taskId }),
 
   deleteVehicleDetailed: (plate: string) =>
     postActionDetailed("deleteVehicle", { plate }),
@@ -255,7 +267,22 @@ export const api = {
     departmentId: string;
     role?: string;
     phone?: string;
+    qualificationIds?: string[];
+    drivingLicenseIds?: string[];
   }) => postActionDetailed<{ employeeId: string }>("createEmployee", data),
+
+  updateEmployeeDetailed: (data: {
+    employeeId: string;
+    name: string;
+    departmentId: string;
+    status: "active" | "reserve" | "inactive";
+    reserveStartDate?: string;
+    reserveEndDate?: string;
+    role?: string;
+    phone?: string;
+    qualificationIds?: string[];
+    drivingLicenseIds?: string[];
+  }) => postActionDetailed("updateEmployee", data),
 
   deleteEmployeeDetailed: (employeeId: string) =>
     postActionDetailed("deleteEmployee", { employeeId }),

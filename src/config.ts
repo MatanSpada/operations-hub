@@ -39,6 +39,7 @@ export const SHEET_NAMES = {
   apartments: "Apartments",
   qualifications: "Qualifications",
   employeeQualifications: "Employee_Qualifications",
+  employeeDrivingLicenses: "Employee_Driving_Licenses",
 } as const;
 
 // ── Navigation Tabs ──────────────────────────────────────────────────

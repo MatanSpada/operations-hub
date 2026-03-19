@@ -148,4 +148,12 @@ export const MOCK_DATA: InitialData = {
     { employeeId: "e10", qualificationId: "q1" },
     { employeeId: "e10", qualificationId: "q2" },
   ],
+
+  employeeDrivingLicenses: [
+    { employeeId: "e1", drivingLicenseId: "dl1" },
+    { employeeId: "e2", drivingLicenseId: "dl1" },
+    { employeeId: "e2", drivingLicenseId: "dl2" },
+    { employeeId: "e3", drivingLicenseId: "dl2" },
+    { employeeId: "e5", drivingLicenseId: "dl1" },
+  ],
 };

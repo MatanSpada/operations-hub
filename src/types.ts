@@ -86,7 +86,7 @@ export interface CampTask {
   department?: string;
   requesterName: string;
   mission: string;
-  treatmentSummary: string;
+  treatmentSummary?: string;
 }
 
 // ── Equipment ────────────────────────────────────────────────────────
@@ -156,6 +156,11 @@ export interface EmployeeQualification {
   qualificationId: string;
 }
 
+export interface EmployeeDrivingLicense {
+  employeeId: string;
+  drivingLicenseId: string;
+}
+
 // ── API Response ─────────────────────────────────────────────────────
 export interface ApiResponse<T> {
   success: boolean;
@@ -167,6 +172,7 @@ export interface InitialData {
   employees: Employee[];
   departments: Department[];
   drivingLicenses: DrivingLicense[];
+  employeeDrivingLicenses: EmployeeDrivingLicense[];
   vehicles: Vehicle[];
   vehicleTasks: VehicleTask[];
   campTasks: CampTask[];

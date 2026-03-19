@@ -110,18 +110,18 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
       filteredVehicleTasks.map((task) => ({
         id: task.id,
         date: formatDate(task.departureTime),
+        departureTime: formatDateTime(task.departureTime),
+        returnTime: formatDateTime(task.returnTime),
+        driver: task.driver || "—",
+        plate: task.plate,
         location: task.departureLocation || "—",
+        taskPurpose: task.taskPurpose || "—",
         workHours: formatHours(computeTaskWorkHours(task)),
         vehicleType: task.vehicleType || "—",
         missionType: vehicleMissionTypeLabel(task.missionType),
         treatmentSummary: task.treatmentSummary || "—",
       })),
     [filteredVehicleTasks]
-  );
-
-  const recentVehicleTasks = useMemo(
-    () => [...vehicleTasks].sort((a, b) => b.departureTime.localeCompare(a.departureTime)).slice(0, 10),
-    [vehicleTasks]
   );
 
   const resetMissionModal = () => {
@@ -236,10 +236,15 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const exportVehicleReport = () => {
     downloadCsv("vehicle-missions-report.csv", [
-      ["תאריך", "מיקום", "שעות עבודה", "סוג הרכב", "משימה", "סיכום טיפול"],
+      ["תאריך", "שעת יציאה", "שעת סיום", "שם הנהג", "רכב", "מיקום", "מטרת משימה", "שעות עבודה", "סוג הרכב", "משימה", "סיכום טיפול"],
       ...vehicleReportRows.map((row) => [
         row.date,
+        row.departureTime,
+        row.returnTime,
+        row.driver,
+        row.plate,
         row.location,
+        row.taskPurpose,
         row.workHours,
         row.vehicleType,
         row.missionType,
@@ -327,43 +332,19 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const reportColumns = [
     { key: "date", header: "תאריך" },
+    { key: "driver", header: "נהג" },
+    { key: "plate", header: "רכב" },
     { key: "location", header: "מיקום" },
+    { key: "taskPurpose", header: "מטרת משימה" },
     { key: "workHours", header: "שעות עבודה" },
     { key: "vehicleType", header: "סוג הרכב" },
     { key: "missionType", header: "משימה" },
     { key: "treatmentSummary", header: "סיכום טיפול" },
   ];
 
-  const historyColumns = [
-    {
-      key: "departureTime",
-      header: "יציאה",
-      render: (task: VehicleTask) => formatDateTime(task.departureTime),
-    },
-    {
-      key: "returnTime",
-      header: "סיום",
-      render: (task: VehicleTask) => formatDateTime(task.returnTime),
-    },
-    { key: "plate", header: "רכב" },
-    { key: "vehicleType", header: "סוג" },
-    { key: "departureLocation", header: "מיקום" },
-    { key: "taskPurpose", header: "מטרת משימה" },
-    {
-      key: "workHours",
-      header: "שעות עבודה",
-      render: (task: VehicleTask) => formatHours(computeTaskWorkHours(task)),
-    },
-    {
-      key: "treatmentSummary",
-      header: "סיכום טיפול",
-      render: (task: VehicleTask) => task.treatmentSummary || "—",
-    },
-  ];
-
   return (
     <div className="animate-fade-in space-y-6">
-      <PageHeader title="רכבים" subtitle="ניהול משימות רכב, סגירת טיפולים ודוח משימות" />
+      <PageHeader title="רכבים" subtitle="ניהול משימות רכב פעילות ודוח משימות סגורות" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="פנויים" value={available.length} variant="success" icon={<Truck size={18} />} />
@@ -441,10 +422,10 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              דוח נסיעות ומשימות
+              משימות רכב סגורות
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              סינון לפי טווח תאריכים ויצוא CSV עבור משימות רכב סגורות
+              טבלה אחת מאוחדת עבור דיווח, היסטוריה וייצוא CSV של משימות רכב סגורות
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -480,20 +461,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           data={vehicleReportRows}
           rowKey={(row) => row.id}
           emptyMessage="אין משימות בטווח התאריכים שנבחר"
-          minWidthClassName="min-w-[54rem]"
-        />
-      </section>
-
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          היסטוריית משימות רכב
-        </h3>
-        <DataTable
-          columns={historyColumns}
-          data={recentVehicleTasks}
-          rowKey={(task) => task.id}
-          emptyMessage="אין משימות רכב מתועדות"
-          minWidthClassName="min-w-[70rem]"
+          minWidthClassName="min-w-[76rem]"
         />
       </section>
 
