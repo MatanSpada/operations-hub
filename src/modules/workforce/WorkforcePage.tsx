@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { api } from "@/api";
 import { DataTable } from "@/components/shared/DataTable";
 import { Badge } from "@/components/shared/Badge";
-import { Modal } from "@/components/shared/Modal";
+import { EmployeeEditorModal, EmployeeEditorForm } from "@/components/shared/EmployeeEditorModal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { SummaryCard } from "@/components/shared/SummaryCard";
@@ -23,60 +23,7 @@ interface Props {
   onRefresh: () => Promise<void> | void;
 }
 
-type EmployeeEditForm = {
-  employeeId: string;
-  name: string;
-  departmentId: string;
-  status: Employee["status"];
-  reserveStartDate: string;
-  reserveEndDate: string;
-  role: string;
-  phone: string;
-  qualificationIds: string[];
-  drivingLicenseIds: string[];
-};
-
-function toggleSelection(list: string[], value: string): string[] {
-  return list.includes(value)
-    ? list.filter((item) => item !== value)
-    : [...list, value];
-}
-
-function SelectionList({
-  title,
-  items,
-  selectedIds,
-  onToggle,
-}: {
-  title: string;
-  items: Array<{ id: string; name: string }>;
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium">{title}</label>
-      <div className="rounded-md border border-border bg-background p-3">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {items.map((item) => (
-            <label
-              key={item.id}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-            >
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(item.id)}
-                onChange={() => onToggle(item.id)}
-                className="h-4 w-4 rounded border-border"
-              />
-              <span>{item.name}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+type EmployeeEditForm = EmployeeEditorForm;
 
 function formatWorkforceError(error?: string): string {
   if (!error) return "שמירת העובד נכשלה";
@@ -394,164 +341,22 @@ export const WorkforcePage: React.FC<Props> = ({ data, onRefresh }) => {
         minWidthClassName="min-w-[70rem]"
       />
 
-      <Modal
+      <EmployeeEditorModal
         open={!!editForm}
+        title={editForm ? `עריכת עובד: ${editForm.name}` : "עריכת עובד"}
+        form={editForm}
+        departments={departments}
+        qualifications={qualifications}
+        drivingLicenses={drivingLicenses}
+        onChange={setEditForm}
+        onSave={saveEmployee}
         onClose={() => {
           setEditForm(null);
           setActionError(null);
         }}
-        title={editForm ? `עריכת עובד: ${editForm.name}` : "עריכת עובד"}
-        width="max-w-3xl"
-      >
-        {editForm && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">שם עובד</label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(event) => setEditForm((current) => current ? { ...current, name: event.target.value } : current)}
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">מחלקה</label>
-                <select
-                  value={editForm.departmentId}
-                  onChange={(event) => setEditForm((current) => current ? { ...current, departmentId: event.target.value } : current)}
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                >
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">תפקיד</label>
-                <input
-                  type="text"
-                  value={editForm.role}
-                  onChange={(event) => setEditForm((current) => current ? { ...current, role: event.target.value } : current)}
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">טלפון</label>
-                <input
-                  type="text"
-                  value={editForm.phone}
-                  onChange={(event) => setEditForm((current) => current ? { ...current, phone: event.target.value } : current)}
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">סטטוס</label>
-                <select
-                  value={editForm.status}
-                  onChange={(event) =>
-                    setEditForm((current) =>
-                      current
-                        ? {
-                            ...current,
-                            status: event.target.value as Employee["status"],
-                            reserveStartDate:
-                              event.target.value === "reserve" ? current.reserveStartDate : "",
-                            reserveEndDate:
-                              event.target.value === "reserve" ? current.reserveEndDate : "",
-                          }
-                        : current
-                    )
-                  }
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                >
-                  <option value="active">פעיל</option>
-                  <option value="reserve">מילואים</option>
-                  <option value="inactive">לא פעיל</option>
-                </select>
-              </div>
-              {editForm.status === "reserve" && (
-                <>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">תחילת מילואים</label>
-                    <input
-                      type="date"
-                      value={editForm.reserveStartDate}
-                      onChange={(event) => setEditForm((current) => current ? { ...current, reserveStartDate: event.target.value } : current)}
-                      className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">סיום מילואים</label>
-                    <input
-                      type="date"
-                      value={editForm.reserveEndDate}
-                      onChange={(event) => setEditForm((current) => current ? { ...current, reserveEndDate: event.target.value } : current)}
-                      className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <SelectionList
-              title="הכשרות"
-              items={qualifications}
-              selectedIds={editForm.qualificationIds}
-              onToggle={(id) =>
-                setEditForm((current) =>
-                  current
-                    ? { ...current, qualificationIds: toggleSelection(current.qualificationIds, id) }
-                    : current
-                )
-              }
-            />
-            <SelectionList
-              title="רישיונות נהיגה"
-              items={drivingLicenses}
-              selectedIds={editForm.drivingLicenseIds}
-              onToggle={(id) =>
-                setEditForm((current) =>
-                  current
-                    ? {
-                        ...current,
-                        drivingLicenseIds: toggleSelection(current.drivingLicenseIds, id),
-                      }
-                    : current
-                )
-              }
-            />
-
-            {actionError && <p className="text-sm text-status-danger-text">{actionError}</p>}
-
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
-              <button
-                onClick={saveEmployee}
-                disabled={isSaving}
-                className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
-              >
-                {isSaving ? "שומר..." : "שמור שינויים"}
-              </button>
-              <button
-                onClick={() => {
-                  setEditForm(null);
-                  setActionError(null);
-                }}
-                className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
-              >
-                ביטול
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        isSaving={isSaving}
+        actionError={actionError}
+      />
     </div>
   );
 };

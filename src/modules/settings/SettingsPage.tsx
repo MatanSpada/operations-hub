@@ -10,6 +10,7 @@ import {
 } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
+import { EmployeeEditorForm, EmployeeEditorModal } from "@/components/shared/EmployeeEditorModal";
 import { Modal } from "@/components/shared/Modal";
 import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
@@ -17,6 +18,7 @@ import { Badge } from "@/components/shared/Badge";
 import { api } from "@/api";
 import {
   calcWarehouseStock,
+  downloadZip,
   downloadCsv,
   employeeStatusLabel,
   employeeStatusVariant,
@@ -67,7 +69,6 @@ type EmployeeFormState = {
 };
 
 type ExportTarget =
-  | "all"
   | "employees"
   | "departments"
   | "vehicles"
@@ -205,9 +206,11 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [activeSection, setActiveSection] = useState<ManagementSection>("employees");
   const [search, setSearch] = useState("");
   const [createModal, setCreateModal] = useState<Exclude<ManagementSection, "exports"> | null>(null);
+  const [editEmployeeForm, setEditEmployeeForm] = useState<EmployeeEditorForm | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [exportAllChoiceOpen, setExportAllChoiceOpen] = useState(false);
   const [departmentForm, setDepartmentForm] = useState({ name: "" });
   const [qualificationForm, setQualificationForm] = useState({ name: "" });
   const [licenseForm, setLicenseForm] = useState({ name: "" });
@@ -260,6 +263,24 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     });
     return map;
   }, [drivingLicenseNameById, employeeDrivingLicenses]);
+  const employeeQualificationIdsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    employeeQualifications.forEach((assignment) => {
+      const current = map.get(assignment.employeeId) ?? [];
+      current.push(assignment.qualificationId);
+      map.set(assignment.employeeId, current);
+    });
+    return map;
+  }, [employeeQualifications]);
+  const employeeDrivingLicenseIdsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    employeeDrivingLicenses.forEach((assignment) => {
+      const current = map.get(assignment.employeeId) ?? [];
+      current.push(assignment.drivingLicenseId);
+      map.set(assignment.employeeId, current);
+    });
+    return map;
+  }, [employeeDrivingLicenses]);
 
   const productRows = useMemo(
     () =>
@@ -351,7 +372,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     qualificationNameById,
   ]);
 
-  const exportRowsByTarget = useMemo<Record<Exclude<ExportTarget, "all">, string[][]>>(
+  const exportRowsByTarget = useMemo<Record<ExportTarget, string[][]>>(
     () => ({
       employees: [
         ["שם", "מחלקה", "תפקיד", "טלפון", "סטטוס", "תחילת מילואים", "סיום מילואים", "הכשרות", "רישיונות נהיגה"],
@@ -487,6 +508,15 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     ]
   );
 
+  const exportFiles = useMemo(
+    () =>
+      (Object.keys(exportRowsByTarget) as ExportTarget[]).map((target) => ({
+        filename: `${target}.csv`,
+        rows: exportRowsByTarget[target],
+      })),
+    [exportRowsByTarget]
+  );
+
   const openCreateModal = (section: Exclude<ManagementSection, "exports">) => {
     setCreateModal(section);
     setActionError(null);
@@ -516,6 +546,24 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const closeCreateModal = () => {
     setCreateModal(null);
     setActionError(null);
+  };
+
+  const openEditEmployeeModal = (employee: Employee) => {
+    const departmentId =
+      departments.find((department) => department.name === employee.department)?.id ?? departments[0]?.id ?? "";
+    setActionError(null);
+    setEditEmployeeForm({
+      employeeId: employee.id,
+      name: employee.name,
+      departmentId,
+      status: employee.status,
+      reserveStartDate: employee.reserveStartDate || "",
+      reserveEndDate: employee.reserveEndDate || "",
+      role: employee.role || "",
+      phone: employee.phone || "",
+      qualificationIds: employeeQualificationIdsMap.get(employee.id) ?? [],
+      drivingLicenseIds: employeeDrivingLicenseIdsMap.get(employee.id) ?? [],
+    });
   };
 
   const submitCreate = async () => {
@@ -609,16 +657,51 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     }
   };
 
-  const exportSingleTarget = (target: Exclude<ExportTarget, "all">) => {
+  const exportSingleTarget = (target: ExportTarget) => {
     downloadCsv(`${target}.csv`, exportRowsByTarget[target]);
   };
 
-  const exportAllTargets = () => {
-    (
-      Object.keys(exportRowsByTarget) as Array<Exclude<ExportTarget, "all">>
-    ).forEach((target) => {
-      downloadCsv(`${target}.csv`, exportRowsByTarget[target]);
+  const exportAllAsSeparateFiles = () => {
+    exportFiles.forEach((file) => {
+      downloadCsv(file.filename, file.rows);
     });
+    setExportAllChoiceOpen(false);
+  };
+
+  const exportAllAsZip = () => {
+    downloadZip("operations-hub-exports.zip", exportFiles);
+    setExportAllChoiceOpen(false);
+  };
+
+  const saveEmployee = async () => {
+    if (!editEmployeeForm) return;
+
+    setIsSaving(true);
+    setActionError(null);
+    const result = await api.updateEmployeeDetailed({
+      employeeId: editEmployeeForm.employeeId,
+      name: editEmployeeForm.name.trim(),
+      departmentId: editEmployeeForm.departmentId,
+      status: editEmployeeForm.status,
+      reserveStartDate:
+        editEmployeeForm.status === "reserve" ? editEmployeeForm.reserveStartDate || undefined : undefined,
+      reserveEndDate:
+        editEmployeeForm.status === "reserve" ? editEmployeeForm.reserveEndDate || undefined : undefined,
+      role: editEmployeeForm.role.trim() || undefined,
+      phone: editEmployeeForm.phone.trim() || undefined,
+      qualificationIds: editEmployeeForm.qualificationIds,
+      drivingLicenseIds: editEmployeeForm.drivingLicenseIds,
+    });
+
+    if (!result.data) {
+      setActionError(formatManagementError(result.error));
+      setIsSaving(false);
+      return;
+    }
+
+    await onRefresh();
+    setIsSaving(false);
+    setEditEmployeeForm(null);
   };
 
   const departmentColumns = [
@@ -744,7 +827,16 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   ];
 
   const employeeColumns = [
-    { key: "name", header: "עובד" },
+    {
+      key: "name",
+      header: "עובד",
+      render: (employee: typeof employeeRows[number]) => (
+        <div>
+          <div className="font-semibold text-foreground">{employee.name}</div>
+          <div className="text-xs text-muted-foreground">לחיצה על השורה לעריכה</div>
+        </div>
+      ),
+    },
     { key: "department", header: "מחלקה" },
     { key: "role", header: "תפקיד", render: (employee: typeof employeeRows[number]) => employee.role || "—" },
     { key: "phone", header: "טלפון", render: (employee: typeof employeeRows[number]) => employee.phone || "—" },
@@ -772,7 +864,10 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       header: "פעולות",
       render: (employee: typeof employeeRows[number]) => (
         <button
-          onClick={() => setDeleteTarget({ id: employee.id, label: employee.name, type: "employees" })}
+          onClick={(event) => {
+            event.stopPropagation();
+            setDeleteTarget({ id: employee.id, label: employee.name, type: "employees" });
+          }}
           className="text-xs font-medium text-status-danger-text hover:underline"
         >
           מחק
@@ -1118,15 +1213,15 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                onClick={exportAllTargets}
+          <button
+                onClick={() => setExportAllChoiceOpen(true)}
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
               >
                 <Download size={14} />
                 יצוא כל הטבלאות
               </button>
               <button
-                onClick={() => exportSingleTarget(exportTarget as Exclude<ExportTarget, "all">)}
+                onClick={() => exportSingleTarget(exportTarget)}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Download size={14} />
@@ -1248,6 +1343,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
             rowKey={sectionContent[activeSection].rowKey}
             emptyMessage={sectionContent[activeSection].emptyMessage}
             minWidthClassName="min-w-[56rem]"
+            onRowClick={activeSection === "employees" ? openEditEmployeeModal : undefined}
           />
         </>
       )}
@@ -1279,6 +1375,23 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         </div>
       </Modal>
 
+      <EmployeeEditorModal
+        open={!!editEmployeeForm}
+        title={editEmployeeForm ? `עריכת עובד: ${editEmployeeForm.name}` : "עריכת עובד"}
+        form={editEmployeeForm}
+        departments={departments}
+        qualifications={qualifications}
+        drivingLicenses={drivingLicenses}
+        onChange={setEditEmployeeForm}
+        onSave={saveEmployee}
+        onClose={() => {
+          setEditEmployeeForm(null);
+          setActionError(null);
+        }}
+        isSaving={isSaving}
+        actionError={actionError}
+      />
+
       <Modal
         open={deleteTarget !== null}
         onClose={() => {
@@ -1308,6 +1421,32 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
               className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
             >
               ביטול
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={exportAllChoiceOpen}
+        onClose={() => setExportAllChoiceOpen(false)}
+        title="יצוא כל הטבלאות"
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-6 text-muted-foreground">
+            בחר את אופן הייצוא. בקבצים נפרדים הדפדפן עשוי לבקש אישור למספר הורדות.
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={exportAllAsZip}
+              className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
+            >
+              ZIP ({exportFiles.length} קבצים)
+            </button>
+            <button
+              onClick={exportAllAsSeparateFiles}
+              className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
+            >
+              קבצים נפרדים ({exportFiles.length} קבצים)
             </button>
           </div>
         </div>

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildZipBlob,
   combineDateAndTimeToIso,
   computeDurationHours,
   formatDate,
   formatDateTime,
   inDateRange,
+  withSerialColumn,
 } from "@/utils";
 
 describe("date/time utilities", () => {
@@ -26,5 +28,23 @@ describe("date/time utilities", () => {
     const iso = combineDateAndTimeToIso("2026-03-20", "00:30");
     expect(iso).toBeTruthy();
     expect(inDateRange(iso ?? undefined, "2026-03-20", "2026-03-20")).toBe(true);
+  });
+
+  it("adds serial numbering to exported rows and can package files as zip", async () => {
+    const rows = withSerialColumn([
+      ["שם", "מחלקה"],
+      ["דנה", "תפעול"],
+      ["נועם", "לוגיסטיקה"],
+    ]);
+
+    expect(rows).toEqual([
+      ["מספר סידורי", "שם", "מחלקה"],
+      ["1", "דנה", "תפעול"],
+      ["2", "נועם", "לוגיסטיקה"],
+    ]);
+
+    const zipBlob = buildZipBlob([{ filename: "employees.csv", rows: [["שם"], ["דנה"]] }]);
+    expect(zipBlob.type).toBe("application/zip");
+    expect(zipBlob.size).toBeGreaterThan(0);
   });
 });

@@ -242,15 +242,34 @@ export function inDateRange(dateStr: string | undefined, from?: string, to?: str
   return true;
 }
 
-export function downloadCsv(filename: string, rows: string[][]): void {
-  const csv = rows
-    .map((row) =>
-      row
-        .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
-        .join(",")
-    )
-    .join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+export interface ExportFile {
+  filename: string;
+  rows: string[][];
+}
+
+function buildCrc32Table(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+}
+
+const CRC32_TABLE = buildCrc32Table();
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -259,6 +278,142 @@ export function downloadCsv(filename: string, rows: string[][]): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export function withSerialColumn(rows: string[][], headerLabel = "מספר סידורי"): string[][] {
+  if (rows.length === 0) return [[headerLabel]];
+  const [header, ...dataRows] = rows;
+  return [
+    [headerLabel, ...header],
+    ...dataRows.map((row, index) => [String(index + 1), ...row]),
+  ];
+}
+
+export function rowsToCsv(rows: string[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    )
+    .join("\n");
+}
+
+function encodeCsvRows(rows: string[][]): Uint8Array {
+  return new TextEncoder().encode(`\uFEFF${rowsToCsv(withSerialColumn(rows))}`);
+}
+
+function dosDateTime(date = new Date()): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime =
+    (date.getHours() << 11) |
+    (date.getMinutes() << 5) |
+    Math.floor(date.getSeconds() / 2);
+  const dosDate =
+    ((year - 1980) << 9) |
+    ((date.getMonth() + 1) << 5) |
+    date.getDate();
+  return { dosTime, dosDate };
+}
+
+function writeUint16(view: DataView, offset: number, value: number) {
+  view.setUint16(offset, value, true);
+}
+
+function writeUint32(view: DataView, offset: number, value: number) {
+  view.setUint32(offset, value >>> 0, true);
+}
+
+function concatUint8Arrays(parts: Uint8Array[]): Uint8Array {
+  const totalSize = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(totalSize);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output;
+}
+
+export function buildZipBlob(files: ExportFile[]): Blob {
+  const now = dosDateTime();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let offset = 0;
+
+  files.forEach((file) => {
+    const filenameBytes = new TextEncoder().encode(file.filename);
+    const fileBytes = encodeCsvRows(file.rows);
+    const checksum = crc32(fileBytes);
+
+    const localHeader = new Uint8Array(30 + filenameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    writeUint32(localView, 0, 0x04034b50);
+    writeUint16(localView, 4, 20);
+    writeUint16(localView, 6, 0x0800);
+    writeUint16(localView, 8, 0);
+    writeUint16(localView, 10, now.dosTime);
+    writeUint16(localView, 12, now.dosDate);
+    writeUint32(localView, 14, checksum);
+    writeUint32(localView, 18, fileBytes.length);
+    writeUint32(localView, 22, fileBytes.length);
+    writeUint16(localView, 26, filenameBytes.length);
+    writeUint16(localView, 28, 0);
+    localHeader.set(filenameBytes, 30);
+
+    const centralHeader = new Uint8Array(46 + filenameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    writeUint32(centralView, 0, 0x02014b50);
+    writeUint16(centralView, 4, 20);
+    writeUint16(centralView, 6, 20);
+    writeUint16(centralView, 8, 0x0800);
+    writeUint16(centralView, 10, 0);
+    writeUint16(centralView, 12, now.dosTime);
+    writeUint16(centralView, 14, now.dosDate);
+    writeUint32(centralView, 16, checksum);
+    writeUint32(centralView, 20, fileBytes.length);
+    writeUint32(centralView, 24, fileBytes.length);
+    writeUint16(centralView, 28, filenameBytes.length);
+    writeUint16(centralView, 30, 0);
+    writeUint16(centralView, 32, 0);
+    writeUint16(centralView, 34, 0);
+    writeUint16(centralView, 36, 0);
+    writeUint32(centralView, 38, 0);
+    writeUint32(centralView, 42, offset);
+    centralHeader.set(filenameBytes, 46);
+
+    localParts.push(localHeader, fileBytes);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + fileBytes.length;
+  });
+
+  const centralDirectory = concatUint8Arrays(centralParts);
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  writeUint32(endView, 0, 0x06054b50);
+  writeUint16(endView, 4, 0);
+  writeUint16(endView, 6, 0);
+  writeUint16(endView, 8, files.length);
+  writeUint16(endView, 10, files.length);
+  writeUint32(endView, 12, centralDirectory.length);
+  writeUint32(endView, 16, offset);
+  writeUint16(endView, 20, 0);
+
+  const archiveBytes = concatUint8Arrays([...localParts, centralDirectory, endRecord]);
+  return new Blob(
+    [archiveBytes.buffer.slice(archiveBytes.byteOffset, archiveBytes.byteOffset + archiveBytes.byteLength)],
+    { type: "application/zip" }
+  );
+}
+
+export function downloadCsv(filename: string, rows: string[][]): void {
+  downloadBlob(filename, new Blob([`\uFEFF${rowsToCsv(withSerialColumn(rows))}`], {
+    type: "text/csv;charset=utf-8;",
+  }));
+}
+
+export function downloadZip(filename: string, files: ExportFile[]): void {
+  downloadBlob(filename, buildZipBlob(files));
 }
 
 export function isApartmentStale(lastSupplied?: string): boolean {
