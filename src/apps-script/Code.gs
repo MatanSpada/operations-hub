@@ -9,7 +9,7 @@
  * Employees: ID, Name, Department, Status, ReserveStartDate, ReserveEndDate, Phone, Role
  * Vehicles: Plate, VehicleType, Status, CurrentDriver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, Notes
  * Vehicle_Trips: ID, Plate, VehicleType, Driver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, ReturnTime, WorkHours, TreatmentSummary
- * Camp_Tasks: ID, Date, Department, RequesterName, Mission, TreatmentSummary
+ * Camp_Tasks: ID, Date, Department, RequesterName, ApprovingCommander, Mission, TreatmentSummary
  * Equipment_Catalog: ID, Name, TotalQuantity
  * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
  * Food_Catalog: ID, Name, Category, Department
@@ -545,6 +545,7 @@ function createVehicle_(payload) {
 function createCampTask_(payload) {
   const taskId = generateId_();
   const requesterName = String(payload.requesterName || "").trim();
+  const approvingCommander = String(payload.approvingCommander || "").trim();
   const mission = String(payload.mission || "").trim();
   const treatmentSummary = String(payload.treatmentSummary || "").trim();
   const date = String(payload.date || "").trim() || todayIso_();
@@ -561,6 +562,7 @@ function createCampTask_(payload) {
     Date: date,
     Department: payload.department || "",
     RequesterName: requesterName,
+    ApprovingCommander: approvingCommander,
     Mission: mission,
     TreatmentSummary: treatmentSummary,
   });
@@ -574,6 +576,7 @@ function createCampTask_(payload) {
 function updateCampTask_(payload) {
   const taskId = String(payload.taskId || "").trim();
   const requesterName = String(payload.requesterName || "").trim();
+  const approvingCommander = String(payload.approvingCommander || "").trim();
   const mission = String(payload.mission || "").trim();
   const treatmentSummary = String(payload.treatmentSummary || "").trim();
   const date = String(payload.date || "").trim() || todayIso_();
@@ -591,6 +594,7 @@ function updateCampTask_(payload) {
     Date: date,
     Department: payload.department || "",
     RequesterName: requesterName,
+    ApprovingCommander: approvingCommander,
     Mission: mission,
     TreatmentSummary: treatmentSummary,
   })) {
@@ -839,8 +843,9 @@ function normalizeCampTask_(row) {
     date: stringValue_(row.Date),
     department: optionalString_(row.Department),
     requesterName: stringValue_(row.RequesterName),
+    approvingCommander: optionalString_(row.ApprovingCommander),
     mission: stringValue_(row.Mission),
-    treatmentSummary: stringValue_(row.TreatmentSummary),
+    treatmentSummary: optionalString_(row.TreatmentSummary),
   };
 }
 

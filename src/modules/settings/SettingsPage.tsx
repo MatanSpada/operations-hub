@@ -23,6 +23,7 @@ import {
   employeeStatusLabel,
   employeeStatusVariant,
   formatDate,
+  formatDateShort,
   vehicleStatusLabel,
   vehicleStatusVariant,
 } from "@/utils";
@@ -422,11 +423,12 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         ]),
       ],
       missions: [
-        ["תאריך", "מחלקה", "מבקש", "משימה", "סיכום טיפול"],
+        ["תאריך", "מחלקה", "מבקש", "מפקד מאשר", "משימה", "סיכום טיפול"],
         ...campTasks.map((task) => [
-          formatDate(task.date),
+          formatDateShort(task.date),
           task.department || "",
           task.requesterName,
+          task.approvingCommander || "",
           task.mission,
           task.treatmentSummary || "",
         ]),

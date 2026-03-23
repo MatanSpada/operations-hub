@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import { CampTask, InitialData } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
@@ -9,12 +9,12 @@ import { api } from "@/api";
 import {
   downloadCsv,
   endOfWeekIso,
-  formatDate,
+  formatDateShort,
   formatDateForInput,
   inDateRange,
   startOfWeekIso,
 } from "@/utils";
-import { ClipboardList, Download, FileText, Plus, Trash2, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, Download, FileText, Plus, Trash2, Users } from "lucide-react";
 
 interface Props {
   data: InitialData;
@@ -26,8 +26,43 @@ interface CampTaskForm {
   date: string;
   department: string;
   requesterName: string;
+  approvingCommander: string;
   mission: string;
   treatmentSummary: string;
+}
+
+interface MissionDateInputProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function MissionDateInput({ label, value, onChange }: MissionDateInputProps) {
+  const inputId = useId();
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={inputId} className="text-sm font-medium">
+        {label}
+      </label>
+      <div className="relative">
+        <div className="flex h-10 items-center rounded-md border border-border bg-background px-3 pl-10 text-sm text-foreground">
+          {value ? formatDateShort(value) : "בחר תאריך"}
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
+          <CalendarDays size={15} />
+        </div>
+        <input
+          id={inputId}
+          type="date"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label={label}
+        />
+      </div>
+    </div>
+  );
 }
 
 function formatMissionError(error?: string): string {
@@ -59,6 +94,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
     date: formatDateForInput(),
     department: departments[0]?.name ?? "",
     requesterName: "",
+    approvingCommander: "",
     mission: "",
     treatmentSummary: "",
   });
@@ -72,6 +108,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
           return (
             task.department?.includes(search) ||
             task.requesterName.includes(search) ||
+            task.approvingCommander?.includes(search) ||
             task.mission.includes(search) ||
             task.treatmentSummary?.includes(search)
           );
@@ -91,6 +128,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       date: formatDateForInput(),
       department: departments[0]?.name ?? "",
       requesterName: "",
+      approvingCommander: "",
       mission: "",
       treatmentSummary: "",
     });
@@ -104,6 +142,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       date: task.date,
       department: task.department || "",
       requesterName: task.requesterName,
+      approvingCommander: task.approvingCommander || "",
       mission: task.mission,
       treatmentSummary: task.treatmentSummary || "",
     });
@@ -123,6 +162,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       date: taskForm.date,
       department: taskForm.department || undefined,
       requesterName: taskForm.requesterName.trim(),
+      approvingCommander: taskForm.approvingCommander.trim() || undefined,
       mission: taskForm.mission.trim(),
       treatmentSummary: taskForm.treatmentSummary.trim() || undefined,
     };
@@ -159,10 +199,12 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
   const exportReport = () => {
     downloadCsv("missions-report.csv", [
-      ["תאריך", "מחלקה / שם המבקש", "משימה", "סיכום טיפול"],
+      ["תאריך", "מחלקה", "שם המבקש", "מפקד מאשר", "משימה", "סיכום טיפול"],
       ...filteredTasks.map((task) => [
-        formatDate(task.date),
-        [task.department, task.requesterName].filter(Boolean).join(" / "),
+        formatDateShort(task.date),
+        task.department || "",
+        task.requesterName,
+        task.approvingCommander || "",
         task.mission,
         task.treatmentSummary || "",
       ]),
@@ -202,28 +244,20 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">מתאריך</label>
-              <input
-                type="date"
-                value={reportRange.from}
-                onChange={(event) => setReportRange((current) => ({ ...current, from: event.target.value }))}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">עד תאריך</label>
-              <input
-                type="date"
-                value={reportRange.to}
-                onChange={(event) => setReportRange((current) => ({ ...current, to: event.target.value }))}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+            <MissionDateInput
+              label="מתאריך"
+              value={reportRange.from}
+              onChange={(from) => setReportRange((current) => ({ ...current, from }))}
+            />
+            <MissionDateInput
+              label="עד תאריך"
+              value={reportRange.to}
+              onChange={(to) => setReportRange((current) => ({ ...current, to }))}
+            />
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="חיפוש מבקש, מחלקה או משימה..."
+              placeholder="חיפוש מבקש, מפקד מאשר, מחלקה או משימה..."
               className="w-full"
             />
             <button
@@ -238,9 +272,10 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
         <DataTable
           columns={[
-            { key: "date", header: "תאריך", render: (task: CampTask) => formatDate(task.date) },
+            { key: "date", header: "תאריך", render: (task: CampTask) => formatDateShort(task.date) },
             { key: "department", header: "מחלקה", render: (task: CampTask) => task.department || "—" },
             { key: "requesterName", header: "שם המבקש" },
+            { key: "approvingCommander", header: "מפקד מאשר", render: (task: CampTask) => task.approvingCommander || "—" },
             { key: "mission", header: "משימה" },
             { key: "treatmentSummary", header: "סיכום טיפול", render: (task: CampTask) => task.treatmentSummary || "—" },
             {
@@ -265,7 +300,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
           rowKey={(task) => task.id}
           onRowClick={openEditModal}
           emptyMessage="אין משימות בטווח ובסינון שנבחרו"
-          minWidthClassName="min-w-[64rem]"
+          minWidthClassName="min-w-[74rem]"
         />
       </section>
 
@@ -280,15 +315,11 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">תאריך</label>
-              <input
-                type="date"
-                value={taskForm.date}
-                onChange={(event) => setTaskForm((current) => ({ ...current, date: event.target.value }))}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+            <MissionDateInput
+              label="תאריך"
+              value={taskForm.date}
+              onChange={(date) => setTaskForm((current) => ({ ...current, date }))}
+            />
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">מחלקה</label>
               <select
@@ -314,6 +345,18 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
                 value={taskForm.requesterName}
                 onChange={(event) =>
                   setTaskForm((current) => ({ ...current, requesterName: event.target.value }))
+                }
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                dir="rtl"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">מפקד מאשר</label>
+              <input
+                type="text"
+                value={taskForm.approvingCommander}
+                onChange={(event) =>
+                  setTaskForm((current) => ({ ...current, approvingCommander: event.target.value }))
                 }
                 className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 dir="rtl"

@@ -85,6 +85,7 @@ export interface CampTask {
   date: string;
   department?: string;
   requesterName: string;
+  approvingCommander?: string;
   mission: string;
   treatmentSummary?: string;
 }

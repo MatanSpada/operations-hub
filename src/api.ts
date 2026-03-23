@@ -243,6 +243,7 @@ export const api = {
     date: string;
     department?: string;
     requesterName: string;
+    approvingCommander?: string;
     mission: string;
     treatmentSummary?: string;
   }) => postActionDetailed<{ taskId: string }>("createCampTask", data),
@@ -252,6 +253,7 @@ export const api = {
     date: string;
     department?: string;
     requesterName: string;
+    approvingCommander?: string;
     mission: string;
     treatmentSummary?: string;
   }) => postActionDetailed("updateCampTask", data),

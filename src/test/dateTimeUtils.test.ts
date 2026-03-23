@@ -4,6 +4,7 @@ import {
   combineDateAndTimeToIso,
   computeDurationHours,
   formatDate,
+  formatDateShort,
   formatDateTime,
   inDateRange,
   withSerialColumn,
@@ -12,6 +13,7 @@ import {
 describe("date/time utilities", () => {
   it("formats dates and datetimes in Israeli order with 24-hour time", () => {
     expect(formatDate("2026-03-19")).toBe("19/03/2026");
+    expect(formatDateShort("2026-03-19")).toBe("19/03/26");
     expect(formatDateTime("2026-03-19T18:05:00")).toBe("19/03/2026 18:05");
   });
 

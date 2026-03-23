@@ -44,6 +44,13 @@ export function formatDate(dateStr?: string): string {
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
 
+/** Format ISO date with a short year (DD/MM/YY) */
+export function formatDateShort(dateStr?: string): string {
+  const date = parseDateValue(dateStr);
+  if (!date) return "—";
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${pad2(date.getFullYear() % 100)}`;
+}
+
 export function formatTime(dateStr?: string): string {
   const date = parseDateValue(dateStr);
   if (!date) return "—";

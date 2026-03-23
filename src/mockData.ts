@@ -57,8 +57,8 @@ export const MOCK_DATA: InitialData = {
   ],
 
   campTasks: [
-    { id: "ct1", date: "2025-03-10", department: "לוגיסטיקה", requesterName: "רחל לוי", mission: "טיפול בבקשת ציוד למתחם השדה", treatmentSummary: "הציוד הוכן והועבר לנקודת החלוקה" },
-    { id: "ct2", date: "2025-03-09", department: "אחזקה", requesterName: "אמיר בן דוד", mission: "בדיקת תקלה בתאורת שטח", treatmentSummary: "בוצע תיקון זמני והוזמן חלק חלופי" },
+    { id: "ct1", date: "2025-03-10", department: "לוגיסטיקה", requesterName: "רחל לוי", approvingCommander: "סא\"ל רועי כהן", mission: "טיפול בבקשת ציוד למתחם השדה", treatmentSummary: "הציוד הוכן והועבר לנקודת החלוקה" },
+    { id: "ct2", date: "2025-03-09", department: "אחזקה", requesterName: "אמיר בן דוד", approvingCommander: "רס\"ן תומר לוי", mission: "בדיקת תקלה בתאורת שטח", treatmentSummary: "בוצע תיקון זמני והוזמן חלק חלופי" },
   ],
 
   // ── Equipment Types ───────────────────────────────────────────────

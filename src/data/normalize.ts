@@ -211,6 +211,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
     date: readString(row, ["date", "Date"]),
     department: readOptionalString(row, ["department", "Department"]),
     requesterName: readString(row, ["requesterName", "RequesterName"]),
+    approvingCommander: readOptionalString(row, ["approvingCommander", "ApprovingCommander"]),
     mission: readString(row, ["mission", "Mission"]),
     treatmentSummary: readOptionalString(row, ["treatmentSummary", "TreatmentSummary"]),
   }));
