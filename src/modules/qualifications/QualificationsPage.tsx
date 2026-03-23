@@ -54,44 +54,46 @@ export const QualificationsPage: React.FC<Props> = ({ data }) => {
       </div>
 
       {/* Matrix table */}
-      <div className="overflow-x-auto rounded-lg bg-card shadow-card">
-        <table className="min-w-[44rem] text-sm" dir="rtl" style={{ minWidth: "max(100%, 44rem)" }}>
-          <thead>
-            <tr className="bg-muted border-b border-border">
-              <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground sticky right-0 bg-muted z-10 min-w-36">
-                עובד / מחלקה
-              </th>
-              {qualifications.map((q) => (
-                <th key={q.id} className="px-3 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap text-center">
-                  {q.name}
+      <div className="overflow-hidden rounded-lg bg-card shadow-card">
+        <div className="overflow-x-auto">
+          <table className="min-w-[44rem] w-full text-sm" dir="rtl">
+            <thead>
+              <tr className="bg-muted border-b border-border">
+                <th className="min-w-36 whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-muted-foreground md:sticky md:right-0 md:z-10 md:bg-muted">
+                  עובד / מחלקה
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEmployees.map((emp) => (
-              <tr key={emp.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3 sticky right-0 bg-card z-10">
-                  <div className="font-semibold text-foreground">{emp.name}</div>
-                  <div className="text-xs text-muted-foreground">{emp.department}</div>
-                </td>
                 {qualifications.map((q) => (
-                  <td key={q.id} className="px-3 py-3 text-center">
-                    {hasQual(emp.id, q.id) ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-status-success-bg text-status-success-text">
-                        <CheckCircle size={14} />
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted text-muted-foreground opacity-30">
-                        —
-                      </span>
-                    )}
-                  </td>
+                  <th key={q.id} className="px-3 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap text-center">
+                    {q.name}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredEmployees.map((emp) => (
+                <tr key={emp.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="min-w-36 whitespace-nowrap px-4 py-3 md:sticky md:right-0 md:z-10 md:bg-card">
+                    <div className="font-semibold text-foreground">{emp.name}</div>
+                    <div className="text-xs text-muted-foreground">{emp.department}</div>
+                  </td>
+                  {qualifications.map((q) => (
+                    <td key={q.id} className="px-3 py-3 text-center">
+                      {hasQual(emp.id, q.id) ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-status-success-bg text-status-success-text">
+                          <CheckCircle size={14} />
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted text-muted-foreground opacity-30">
+                          —
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
