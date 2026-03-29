@@ -18,6 +18,7 @@ import { Modal } from "@/components/shared/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import {
   calcAvailableQty,
   employeeStatusLabel,
@@ -979,17 +980,15 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">תאריך החזרה צפוי</label>
-                    <input
-                      type="date"
+                    <DateDisplayInput
+                      label="תאריך החזרה צפוי"
                       value={assignmentDetails.expectedReturnDate}
-                      onChange={(event) =>
+                      onChange={(expectedReturnDate) =>
                         setAssignmentDetails((current) => ({
                           ...current,
-                          expectedReturnDate: event.target.value,
+                          expectedReturnDate,
                         }))
                       }
-                      className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <p className="text-xs text-muted-foreground">
                       יחול על הנפקות חדשות ובשמירה יעדכן גם השאלות פעילות של אותו עובד.

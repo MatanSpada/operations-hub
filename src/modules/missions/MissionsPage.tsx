@@ -1,10 +1,11 @@
-import React, { useId, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { CampTask, InitialData } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { DataTable } from "@/components/shared/DataTable";
 import { Modal } from "@/components/shared/Modal";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import { api } from "@/api";
 import {
   downloadCsv,
@@ -14,7 +15,7 @@ import {
   inDateRange,
   startOfWeekIso,
 } from "@/utils";
-import { CalendarDays, ClipboardList, Download, FileText, Plus, Trash2, Users } from "lucide-react";
+import { ClipboardList, Download, FileText, Plus, Trash2, Users } from "lucide-react";
 
 interface Props {
   data: InitialData;
@@ -29,40 +30,6 @@ interface CampTaskForm {
   approvingCommander: string;
   mission: string;
   treatmentSummary: string;
-}
-
-interface MissionDateInputProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}
-
-function MissionDateInput({ label, value, onChange }: MissionDateInputProps) {
-  const inputId = useId();
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={inputId} className="text-sm font-medium">
-        {label}
-      </label>
-      <div className="relative">
-        <div className="flex h-10 items-center rounded-md border border-border bg-background px-3 pl-10 text-sm text-foreground">
-          {value ? formatDateShort(value) : "בחר תאריך"}
-        </div>
-        <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
-          <CalendarDays size={15} />
-        </div>
-        <input
-          id={inputId}
-          type="date"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          aria-label={label}
-        />
-      </div>
-    </div>
-  );
 }
 
 function formatMissionError(error?: string): string {
@@ -244,15 +211,17 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <MissionDateInput
+            <DateDisplayInput
               label="מתאריך"
               value={reportRange.from}
               onChange={(from) => setReportRange((current) => ({ ...current, from }))}
+              shortYear
             />
-            <MissionDateInput
+            <DateDisplayInput
               label="עד תאריך"
               value={reportRange.to}
               onChange={(to) => setReportRange((current) => ({ ...current, to }))}
+              shortYear
             />
             <SearchInput
               value={search}
@@ -315,10 +284,11 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <MissionDateInput
+            <DateDisplayInput
               label="תאריך"
               value={taskForm.date}
               onChange={(date) => setTaskForm((current) => ({ ...current, date }))}
+              shortYear
             />
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">מחלקה</label>
