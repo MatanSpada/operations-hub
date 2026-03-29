@@ -228,6 +228,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
         equipmentId,
       quantity: readNumber(row, ["quantity", "Quantity"]),
       issuedTo: readString(row, ["issuedTo", "IssuedTo"]),
+      employeeId: readOptionalString(row, ["employeeId", "EmployeeID"]),
       department: readString(row, ["department", "Department"]),
       issueDate: readString(row, ["issueDate", "IssueDate"]),
       expectedReturnDate: readOptionalString(row, ["expectedReturnDate", "ExpectedReturnDate"]),

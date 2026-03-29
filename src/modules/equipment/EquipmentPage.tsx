@@ -10,8 +10,8 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-import React, { useState, useMemo } from "react";
-import { InitialData, EquipmentType, EquipmentLedgerEntry } from "@/types";
+import React, { useEffect, useMemo, useState } from "react";
+import { InitialData, EquipmentType, EquipmentLedgerEntry, Employee } from "@/types";
 import { Badge } from "@/components/shared/Badge";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { Modal } from "@/components/shared/Modal";
@@ -20,9 +20,12 @@ import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
 import {
   calcAvailableQty,
+  employeeStatusLabel,
+  employeeStatusVariant,
   equipmentStatusLabel,
   equipmentStatusVariant,
   formatDate,
+  getReserveStatus,
   isEquipmentOverdue,
 } from "@/utils";
 import { api } from "@/api";
@@ -31,6 +34,47 @@ import { Zap, AlertTriangle, Plus, ArrowRightLeft } from "lucide-react";
 interface Props { data: InitialData; onRefresh: () => void; }
 
 type EquipmentActionMode = "set_quantity" | "issue_item";
+type EquipmentSection = "issued_items" | "assign_by_name";
+type EquipmentTypeWithQty = EquipmentType & { available: number; issued: number };
+
+function isLedgerAssignedToEmployee(entry: EquipmentLedgerEntry, employee: Employee): boolean {
+  if (entry.status === "returned") return false;
+  if (entry.employeeId) {
+    return entry.employeeId === employee.id;
+  }
+  return entry.issuedTo === employee.name;
+}
+
+function getEmployeeEquipmentWarning(employee?: Employee, activeLoansCount = 0) {
+  if (!employee || activeLoansCount <= 0) return null;
+
+  if (employee.status === "inactive") {
+    return {
+      variant: "danger" as const,
+      label: "עובד לא פעיל",
+      message: "העובד מסומן כלא פעיל אך עדיין יש עליו ציוד מושאל.",
+    };
+  }
+
+  const reserveStatus = getReserveStatus(employee.status, employee.reserveEndDate);
+  if (reserveStatus === "reserve_ended") {
+    return {
+      variant: "danger" as const,
+      label: "מילואים הסתיימו",
+      message: "תקופת המילואים של העובד הסתיימה ועדיין יש עליו ציוד מושאל.",
+    };
+  }
+
+  if (reserveStatus === "reserve_ending_soon") {
+    return {
+      variant: "warning" as const,
+      label: "מילואים מסתיימים בקרוב",
+      message: "יש ציוד מושאל לעובד שתקופת המילואים שלו עומדת להסתיים בקרוב.",
+    };
+  }
+
+  return null;
+}
 
 function formatEquipmentCreateError(error?: string): string {
   if (!error) return "שמירת הפריט נכשלה";
@@ -44,6 +88,9 @@ function formatEquipmentActionError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
   if (error.startsWith("Unknown action: setEquipmentStock")) {
     return "ה-endpoint המחובר ב-Google Apps Script לא מכיל עדיין את setEquipmentStock. יש לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה או לפרוס מחדש את ה-Web App.";
+  }
+  if (error.startsWith("Unknown action: syncEmployeeEquipmentAssignments")) {
+    return "ה-endpoint המחובר ב-Google Apps Script לא מכיל עדיין את syncEmployeeEquipmentAssignments. יש לפרוס מחדש את ה-Web App או לעדכן את VITE_GAS_URL לפריסה העדכנית.";
   }
   if (error === "Not enough available equipment to issue") {
     return "אין מספיק פריטים זמינים להנפקה";
@@ -60,13 +107,20 @@ function formatEquipmentActionError(error?: string): string {
   if (error === "Equipment not found") {
     return "הפריט שנבחר לא נמצא";
   }
+  if (error === "Employee not found") {
+    return "העובד שנבחר לא נמצא";
+  }
+  if (error === "Missing employee ID") {
+    return "יש לבחור עובד לפני שמירת ההחתמה";
+  }
   return error;
 }
 
 export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
-  const { equipmentTypes, equipmentLedger, departments } = data;
+  const { equipmentTypes, equipmentLedger, departments, employees } = data;
+  const [activeSection, setActiveSection] = useState<EquipmentSection>("issued_items");
   const [selectedType, setSelectedType] = useState<EquipmentType | null>(null);
-  const [actionItem, setActionItem] = useState<(EquipmentType & { available: number; issued: number }) | null>(null);
+  const [actionItem, setActionItem] = useState<EquipmentTypeWithQty | null>(null);
   const [actionMode, setActionMode] = useState<EquipmentActionMode>("set_quantity");
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
@@ -74,6 +128,11 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [issuedToSearch, setIssuedToSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
+  const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [isSyncingAssignments, setIsSyncingAssignments] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
     totalQuantity: "0",
@@ -84,9 +143,23 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [issueForm, setIssueForm] = useState({
     quantity: 1,
     issuedTo: "",
+    employeeId: "",
     department: "",
     expectedReturnDate: "",
   });
+
+  const sortedEmployees = useMemo(
+    () => [...employees].sort((a, b) => a.name.localeCompare(b.name, "he")),
+    [employees]
+  );
+  const employeeById = useMemo(
+    () => new Map(sortedEmployees.map((employee) => [employee.id, employee])),
+    [sortedEmployees]
+  );
+  const employeeByName = useMemo(
+    () => new Map(sortedEmployees.map((employee) => [employee.name, employee])),
+    [sortedEmployees]
+  );
 
   // ── Overdue count ──────────────────────────────────────────────────
   const overdueCount = equipmentLedger.filter(
@@ -94,7 +167,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   ).length;
 
   // ── Type table with available qty ────────────────────────────────
-  const typesWithQty = useMemo(() =>
+  const typesWithQty = useMemo<EquipmentTypeWithQty[]>(() =>
     equipmentTypes.map((t) => ({
       ...t,
       available: calcAvailableQty(t.totalQuantity, equipmentLedger, t.id),
@@ -125,15 +198,87 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     );
   }, [activeLedger, equipmentLedger, issuedToSearch, selectedType]);
 
+  const selectedEmployee = useMemo(
+    () => employeeById.get(selectedEmployeeId) ?? null,
+    [employeeById, selectedEmployeeId]
+  );
+
+  const selectedEmployeeActiveLedger = useMemo(() => {
+    if (!selectedEmployee) return [];
+    return equipmentLedger.filter((entry) => isLedgerAssignedToEmployee(entry, selectedEmployee));
+  }, [equipmentLedger, selectedEmployee]);
+
+  const selectedEmployeeCurrentByEquipment = useMemo(() => {
+    const map = new Map<string, number>();
+    selectedEmployeeActiveLedger.forEach((entry) => {
+      map.set(entry.equipmentId, (map.get(entry.equipmentId) ?? 0) + entry.quantity);
+    });
+    return map;
+  }, [selectedEmployeeActiveLedger]);
+
+  const selectedEmployeeActiveUnits = useMemo(
+    () => selectedEmployeeActiveLedger.reduce((sum, entry) => sum + entry.quantity, 0),
+    [selectedEmployeeActiveLedger]
+  );
+
+  const selectedEmployeeWarning = useMemo(
+    () => getEmployeeEquipmentWarning(selectedEmployee ?? undefined, selectedEmployeeActiveUnits),
+    [selectedEmployee, selectedEmployeeActiveUnits]
+  );
+
+  useEffect(() => {
+    if (!selectedEmployee) {
+      setAssignmentDraft({});
+      setAssignmentError(null);
+      return;
+    }
+
+    const nextDraft: Record<string, number> = {};
+    equipmentTypes.forEach((equipment) => {
+      nextDraft[equipment.id] = selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0;
+    });
+    setAssignmentDraft(nextDraft);
+    setAssignmentError(null);
+  }, [equipmentTypes, selectedEmployee, selectedEmployeeCurrentByEquipment]);
+
+  const allAssignmentRows = useMemo(
+    () =>
+      typesWithQty.map((equipment) => {
+        const currentQuantity = selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0;
+        const targetQuantity = assignmentDraft[equipment.id] ?? currentQuantity;
+        const maxTargetQuantity = currentQuantity + equipment.available;
+        return {
+          ...equipment,
+          currentQuantity,
+          targetQuantity,
+          maxTargetQuantity,
+          delta: targetQuantity - currentQuantity,
+        };
+      }),
+    [assignmentDraft, selectedEmployeeCurrentByEquipment, typesWithQty]
+  );
+
+  const assignmentRows = useMemo(() => {
+    const normalizedSearch = employeeEquipmentSearch.trim();
+    return allAssignmentRows.filter(
+      (equipment) => !normalizedSearch || equipment.name.includes(normalizedSearch)
+    );
+  }, [allAssignmentRows, employeeEquipmentSearch]);
+
+  const pendingAssignmentChanges = useMemo(
+    () => allAssignmentRows.filter((row) => row.delta !== 0),
+    [allAssignmentRows]
+  );
+
   const resetActionModal = () => {
     setActionItem(null);
     setActionMode("set_quantity");
     setActionError(null);
     setStockForm({ quantity: "" });
-    setIssueForm({ quantity: 1, issuedTo: "", department: "", expectedReturnDate: "" });
+    setIssueForm({ quantity: 1, issuedTo: "", employeeId: "", department: "", expectedReturnDate: "" });
   };
 
-  const openActionModal = (item: EquipmentType & { available: number; issued: number }) => {
+  const openActionModal = (item: EquipmentTypeWithQty) => {
     setActionItem(item);
     setActionMode("set_quantity");
     setActionError(null);
@@ -141,6 +286,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     setIssueForm({
       quantity: item.available > 0 ? 1 : 0,
       issuedTo: "",
+      employeeId: "",
       department: departments[0]?.name ?? "",
       expectedReturnDate: "",
     });
@@ -171,6 +317,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
 
     if (actionMode === "issue_item") {
       const issueQuantity = Number(issueForm.quantity);
+      const normalizedIssuedTo = issueForm.issuedTo.trim();
+      const matchedEmployee = employeeByName.get(normalizedIssuedTo);
       if (Number.isNaN(issueQuantity) || issueQuantity <= 0) {
         setActionError("יש להזין כמות חוקית להנפקה");
         setIsSubmittingAction(false);
@@ -181,7 +329,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         setIsSubmittingAction(false);
         return;
       }
-      if (!issueForm.issuedTo.trim()) {
+      if (!normalizedIssuedTo) {
         setActionError("יש להזין למי הפריט מונפק");
         setIsSubmittingAction(false);
         return;
@@ -190,8 +338,9 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       const result = await api.issueEquipmentDetailed({
         equipmentId: actionItem.id,
         quantity: issueQuantity,
-        issuedTo: issueForm.issuedTo.trim(),
-        department: issueForm.department,
+        issuedTo: normalizedIssuedTo,
+        employeeId: issueForm.employeeId || matchedEmployee?.id,
+        department: issueForm.department || matchedEmployee?.department || "",
         expectedReturnDate: issueForm.expectedReturnDate || undefined,
       });
 
@@ -210,6 +359,45 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const handleReturn = async (ledgerId: string) => {
     await api.returnEquipment(ledgerId);
     onRefresh();
+  };
+
+  const updateAssignmentDraft = (equipmentId: string, nextQuantity: number) => {
+    const row = typesWithQty.find((equipment) => equipment.id === equipmentId);
+    const currentQuantity = selectedEmployeeCurrentByEquipment.get(equipmentId) ?? 0;
+    const maxTargetQuantity = currentQuantity + (row?.available ?? 0);
+    const normalizedQuantity = Math.max(0, Math.min(maxTargetQuantity, Number.isFinite(nextQuantity) ? nextQuantity : 0));
+
+    setAssignmentDraft((current) => ({
+      ...current,
+      [equipmentId]: normalizedQuantity,
+    }));
+  };
+
+  const handleSyncEmployeeAssignments = async () => {
+    if (!selectedEmployee) {
+      setAssignmentError("יש לבחור עובד לפני שמירת ההחתמה");
+      return;
+    }
+
+    setIsSyncingAssignments(true);
+    setAssignmentError(null);
+
+    const result = await api.syncEmployeeEquipmentAssignmentsDetailed({
+      employeeId: selectedEmployee.id,
+      assignments: equipmentTypes.map((equipment) => ({
+        equipmentId: equipment.id,
+        targetQuantity: assignmentDraft[equipment.id] ?? selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0,
+      })),
+    });
+
+    if (!result.data) {
+      setAssignmentError(formatEquipmentActionError(result.error));
+      setIsSyncingAssignments(false);
+      return;
+    }
+
+    await onRefresh();
+    setIsSyncingAssignments(false);
   };
 
   const handleCreateEquipment = async () => {
@@ -263,7 +451,25 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       ),
     },
     { key: "quantity", header: "כמות" },
-    { key: "issuedTo", header: "מושאל ל" },
+    {
+      key: "issuedTo",
+      header: "מושאל ל",
+      render: (l: EquipmentLedgerEntry) => {
+        const linkedEmployee = l.employeeId
+          ? employeeById.get(l.employeeId) ?? null
+          : employeeByName.get(l.issuedTo) ?? null;
+        const warning = getEmployeeEquipmentWarning(linkedEmployee ?? undefined, l.quantity);
+        const missingEmployee = !!l.employeeId && !linkedEmployee;
+
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-foreground">{l.issuedTo}</span>
+            {warning && <Badge variant={warning.variant}>{warning.label}</Badge>}
+            {missingEmployee && <Badge variant="danger">לא נמצא במאגר עובדים</Badge>}
+          </div>
+        );
+      },
+    },
     { key: "department", header: "מחלקה" },
     { key: "issueDate", header: "תאריך הוצאה", render: (l: EquipmentLedgerEntry) => formatDate(l.issueDate) },
     {
@@ -300,6 +506,73 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             סמן כהוחזר
           </button>
         ) : null,
+    },
+  ];
+
+  const assignmentColumns = [
+    {
+      key: "name",
+      header: "פריט",
+      render: (equipment: typeof assignmentRows[number]) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-foreground">{equipment.name}</span>
+          {equipment.delta !== 0 && (
+            <Badge variant={equipment.delta > 0 ? "success" : "warning"}>
+              {equipment.delta > 0 ? `יונפקו ${equipment.delta}` : `יוחזרו ${Math.abs(equipment.delta)}`}
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "available",
+      header: "זמין להוספה",
+      render: (equipment: typeof assignmentRows[number]) => (
+        <span className={equipment.available === 0 ? "font-bold text-status-danger-text" : "font-bold text-status-success-text"}>
+          {equipment.available}
+        </span>
+      ),
+    },
+    {
+      key: "currentQuantity",
+      header: "כעת אצל העובד",
+      render: (equipment: typeof assignmentRows[number]) => equipment.currentQuantity,
+    },
+    {
+      key: "targetQuantity",
+      header: "כמות רצויה",
+      render: (equipment: typeof assignmentRows[number]) => (
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => updateAssignmentDraft(equipment.id, equipment.targetQuantity - 1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-sm font-semibold transition-colors hover:bg-muted"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            min={0}
+            max={equipment.maxTargetQuantity}
+            value={equipment.targetQuantity}
+            onChange={(event) => updateAssignmentDraft(equipment.id, Number(event.target.value))}
+            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => updateAssignmentDraft(equipment.id, equipment.targetQuantity + 1)}
+            disabled={equipment.targetQuantity >= equipment.maxTargetQuantity}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-sm font-semibold transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            +
+          </button>
+        </div>
+      ),
+    },
+    {
+      key: "maxTargetQuantity",
+      header: "מקסימום אפשרי",
+      render: (equipment: typeof assignmentRows[number]) => equipment.maxTargetQuantity,
     },
   ];
 
@@ -390,37 +663,173 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         </div>
       </section>
 
-      {/* Active loans / detail */}
-      <section>
-        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              {selectedType ? `פריטים מושאלים: ${selectedType.name}` : "כל הפריטים המושאלים כעת"}
-            </h3>
-            {issuedToSearch.trim() && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                נמצאו {activeLedgerRows.length} רשומות פעילות עבור "{issuedToSearch.trim()}"
-              </p>
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 border-b border-border pb-2 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection("issued_items");
+                setAssignmentError(null);
+              }}
+              className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                activeSection === "issued_items"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              פריטים מושאלים
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection("assign_by_name");
+                setActionError(null);
+              }}
+              className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                activeSection === "assign_by_name"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              החתמה לפי שם
+            </button>
+          </div>
+
+          {activeSection === "assign_by_name" && (
+            <button
+              type="button"
+              onClick={handleSyncEmployeeAssignments}
+              disabled={!selectedEmployee || pendingAssignmentChanges.length === 0 || isSyncingAssignments}
+              className="inline-flex w-full items-center justify-center gap-2 self-start rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto xl:self-auto"
+            >
+              {isSyncingAssignments ? "שומר..." : `שמור שינויים${pendingAssignmentChanges.length > 0 ? ` (${pendingAssignmentChanges.length})` : ""}`}
+            </button>
+          )}
+        </div>
+
+        {activeSection === "issued_items" ? (
+          <>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {selectedType ? `פריטים מושאלים: ${selectedType.name}` : "כל הפריטים המושאלים כעת"}
+                </h3>
+                {issuedToSearch.trim() && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    נמצאו {activeLedgerRows.length} רשומות פעילות עבור "{issuedToSearch.trim()}"
+                  </p>
+                )}
+              </div>
+              <SearchInput
+                value={issuedToSearch}
+                onChange={setIssuedToSearch}
+                placeholder="חיפוש לפי עובד, מחלקה או פריט..."
+                className="w-full lg:w-80"
+              />
+            </div>
+            <DataTable
+              columns={ledgerColumns}
+              data={activeLedgerRows}
+              rowKey={(l) => l.id}
+              emptyMessage={
+                issuedToSearch.trim()
+                  ? "לא נמצאו פריטים מושאלים עבור החיפוש הזה"
+                  : "אין פריטים מושאלים"
+              }
+              minWidthClassName="min-w-[56rem]"
+            />
+          </>
+        ) : (
+          <div className="space-y-4 rounded-lg bg-card p-4 shadow-card sm:p-5">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">בחירת עובד</label>
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(event) => setSelectedEmployeeId(event.target.value)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  dir="rtl"
+                >
+                  <option value="">בחר עובד</option>
+                  {sortedEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name} / {employee.department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <SearchInput
+                value={employeeEquipmentSearch}
+                onChange={setEmployeeEquipmentSearch}
+                placeholder="חיפוש פריט לפי שם..."
+                className="w-full"
+              />
+            </div>
+
+            {!selectedEmployee ? (
+              <div className="rounded-lg border border-dashed border-border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
+                בחר עובד מהרשימה כדי להחתים או להסיר עבורו ציוד ממאגר העובדים הקיים.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">עובד נבחר</div>
+                    <div className="mt-1 font-semibold text-foreground">{selectedEmployee.name}</div>
+                    <div className="text-xs text-muted-foreground">{selectedEmployee.department}</div>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">סטטוס עובד</div>
+                    <div className="mt-2">
+                      <Badge variant={employeeStatusVariant(selectedEmployee.status)}>
+                        {employeeStatusLabel(selectedEmployee.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">יחידות פעילות</div>
+                    <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{selectedEmployeeActiveUnits}</div>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">שינויים ממתינים</div>
+                    <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{pendingAssignmentChanges.length}</div>
+                  </div>
+                </div>
+
+                {selectedEmployeeWarning && (
+                  <div
+                    className={`rounded-lg border px-4 py-3 text-sm ${
+                      selectedEmployeeWarning.variant === "danger"
+                        ? "border-status-danger-text/20 bg-status-danger-bg text-status-danger-text"
+                        : "border-status-warning-text/20 bg-status-warning-bg text-status-warning-text"
+                    }`}
+                  >
+                    <div className="font-semibold">{selectedEmployeeWarning.label}</div>
+                    <div className="mt-1">{selectedEmployeeWarning.message}</div>
+                  </div>
+                )}
+
+                <DataTable
+                  columns={assignmentColumns}
+                  data={assignmentRows}
+                  rowKey={(equipment) => equipment.id}
+                  emptyMessage={
+                    employeeEquipmentSearch.trim()
+                      ? "לא נמצאו פריטי ציוד עבור החיפוש הזה"
+                      : "אין פריטי ציוד להצגה"
+                  }
+                  minWidthClassName="min-w-[64rem]"
+                />
+
+                {assignmentError && (
+                  <p className="text-sm text-status-danger-text">{assignmentError}</p>
+                )}
+              </>
             )}
           </div>
-          <SearchInput
-            value={issuedToSearch}
-            onChange={setIssuedToSearch}
-            placeholder="חיפוש לפי שם חותם / שואל..."
-            className="w-full lg:w-80"
-          />
-        </div>
-        <DataTable
-          columns={ledgerColumns}
-          data={activeLedgerRows}
-          rowKey={(l) => l.id}
-          emptyMessage={
-            issuedToSearch.trim()
-              ? "לא נמצאו פריטים מושאלים עבור החיפוש הזה"
-              : "אין פריטים מושאלים"
-          }
-          minWidthClassName="min-w-[52rem]"
-        />
+        )}
       </section>
 
       <Modal

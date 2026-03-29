@@ -19,7 +19,7 @@ describe("normalizeInitialData", () => {
       vehicleTrips: [{ ID: "vt1", Plate: "123", VehicleType: "B", Driver: "Dana", DepartureLocation: "North", TaskPurpose: "Repair", MissionType: "fault", DepartureTime: "2026-03-11T08:00:00Z", ReturnTime: "2026-03-11T10:30:00Z", WorkHours: "2.5", TreatmentSummary: "Fixed the issue" }],
       campTasks: [{ ID: "ct1", Date: "2026-03-11", Department: "Operations", RequesterName: "Dana", ApprovingCommander: "Major Tal", Mission: "Camp inspection", TreatmentSummary: "Completed" }],
       equipmentTypes: [{ ID: "eq1", Name: "Generator", TotalQuantity: "3" }],
-      equipmentLedger: [{ ID: "l1", EquipmentID: "eq1", Quantity: "1", IssuedTo: "Dana", Department: "Operations", IssueDate: "2026-03-11", Status: "issued" }],
+      equipmentLedger: [{ ID: "l1", EquipmentID: "eq1", Quantity: "1", IssuedTo: "Dana", EmployeeID: "e1", Department: "Operations", IssueDate: "2026-03-11", Status: "issued" }],
       foodProducts: [{ ID: "f1", Name: "Rice", Category: "Dry" }],
       foodTransactions: [{ ID: "t1", Date: "2026-03-11", Type: "out", ProductID: "f1", Quantity: "2", DestinationApartmentId: "a1" }],
       apartments: [{ ID: "a1", Name: "Apartment A", LastSupplied: "2026-03-10" }],
@@ -36,6 +36,7 @@ describe("normalizeInitialData", () => {
     expect(data.campTasks[0].requesterName).toBe("Dana");
     expect(data.campTasks[0].approvingCommander).toBe("Major Tal");
     expect(data.equipmentLedger[0].equipmentName).toBe("Generator");
+    expect(data.equipmentLedger[0].employeeId).toBe("e1");
     expect(data.foodTransactions[0].productName).toBe("Rice");
     expect(data.foodTransactions[0].destinationApartmentId).toBe("a1");
     expect(data.foodTransactions[0].destination).toBe("Apartment A");

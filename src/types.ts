@@ -104,6 +104,7 @@ export interface EquipmentLedgerEntry {
   equipmentName: string;
   quantity: number;
   issuedTo: string;
+  employeeId?: string;
   department: string;
   issueDate: string;          // ISO date string
   expectedReturnDate?: string;

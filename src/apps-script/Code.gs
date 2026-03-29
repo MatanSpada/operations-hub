@@ -11,7 +11,7 @@
  * Vehicle_Trips: ID, Plate, VehicleType, Driver, DepartureLocation, TaskPurpose, MissionType, RequesterName, RequestingDepartment, DepartureTime, ReturnTime, WorkHours, TreatmentSummary
  * Camp_Tasks: ID, Date, Department, RequesterName, ApprovingCommander, Mission, TreatmentSummary
  * Equipment_Catalog: ID, Name, TotalQuantity
- * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
+ * Equipment_Ledger: ID, EquipmentID, EquipmentName, Quantity, IssuedTo, EmployeeID, Department, IssueDate, ExpectedReturnDate, ReturnDate, Status
  * Food_Catalog: ID, Name, Category, Department
  * Food_Transactions: ID, Date, Type, ProductID, ProductName, Quantity, DestinationApartmentId, DestinationName
  * Apartments: ID, Name, LastSupplied
@@ -156,12 +156,17 @@ function doPost(e) {
       const equipmentId = String(payload.equipmentId || "").trim();
       const quantity = Number(payload.quantity || 0);
       const equipment = getEquipmentTypeById_(equipmentId);
+      const employee = resolveEquipmentEmployee_(payload);
+      const requestedEmployeeId = String(payload.employeeId || "").trim();
 
       if (!equipmentId) {
         throw new Error("Missing equipment ID");
       }
       if (!equipment) {
         throw new Error("Equipment not found");
+      }
+      if (requestedEmployeeId && !employee) {
+        throw new Error("Employee not found");
       }
       if (isNaN(quantity) || quantity <= 0) {
         throw new Error("Invalid equipment quantity");
@@ -170,19 +175,20 @@ function doPost(e) {
         throw new Error("Not enough available equipment to issue");
       }
 
-      appendRow_(SHEETS.EQUIPMENT_LEDGER, {
-        ID: generateId_(),
-        EquipmentID: equipmentId,
-        EquipmentName: equipment.name,
-        Quantity: quantity,
-        IssuedTo: payload.issuedTo,
-        Department: payload.department,
-        IssueDate: todayIso_(),
-        ExpectedReturnDate: payload.expectedReturnDate || "",
-        ReturnDate: "",
-        Status: "issued",
+      appendIssuedEquipmentRow_({
+        equipmentId: equipmentId,
+        equipmentName: equipment.name,
+        quantity: quantity,
+        issuedTo: employee ? employee.name : payload.issuedTo,
+        employeeId: employee ? employee.id : "",
+        department: payload.department || (employee ? employee.department : ""),
+        expectedReturnDate: payload.expectedReturnDate || "",
       });
       return jsonResponse_({ success: true });
+    }
+
+    if (action === "syncEmployeeEquipmentAssignments") {
+      return syncEmployeeEquipmentAssignments_(payload);
     }
 
     if (action === "createEquipmentType") {
@@ -700,6 +706,13 @@ function updateEmployee_(payload) {
     Role: payload.role || "",
   });
 
+  syncActiveEquipmentLoansForEmployee_(
+    employeeId,
+    employee.name,
+    employeeName,
+    department.name
+  );
+
   syncEmployeeAssignments_(
     employeeId,
     payload.qualificationIds || [],
@@ -714,7 +727,7 @@ function deleteEmployee_(payload) {
   if (!employee) {
     throw new Error("Employee not found");
   }
-  if (employeeHasActiveEquipmentLoans_(employee.name)) {
+  if (employeeHasActiveEquipmentLoans_(employee.id, employee.name)) {
     throw new Error("Cannot delete employee with active equipment loans");
   }
   if (employeeDrivesActiveVehicle_(employee.name)) {
@@ -866,6 +879,7 @@ function normalizeEquipmentLedger_(row, equipmentNameById) {
     equipmentName: stringValue_(row.EquipmentName) || equipmentNameById[equipmentId] || equipmentId,
     quantity: numberValue_(row.Quantity),
     issuedTo: stringValue_(row.IssuedTo),
+    employeeId: optionalString_(row.EmployeeID),
     department: stringValue_(row.Department),
     issueDate: stringValue_(row.IssueDate),
     expectedReturnDate: optionalString_(row.ExpectedReturnDate),
@@ -1113,6 +1127,29 @@ function getEmployeeById_(employeeId) {
   return null;
 }
 
+function getEmployeeByName_(employeeName) {
+  const normalizedName = String(employeeName || "").trim();
+  if (!normalizedName) return null;
+
+  const rows = getRows_(SHEETS.EMPLOYEES);
+  for (var index = 0; index < rows.length; index++) {
+    if (String(rows[index].Name || "").trim() === normalizedName) {
+      return {
+        id: String(rows[index].ID),
+        name: String(rows[index].Name),
+        department: String(rows[index].Department || ""),
+        status: String(rows[index].Status || "active"),
+        reserveStartDate: String(rows[index].ReserveStartDate || ""),
+        reserveEndDate: String(rows[index].ReserveEndDate || ""),
+        phone: String(rows[index].Phone || ""),
+        role: String(rows[index].Role || ""),
+      };
+    }
+  }
+
+  return null;
+}
+
 function getVehicleByPlate_(plate) {
   const rows = getRows_(SHEETS.VEHICLES);
   for (var index = 0; index < rows.length; index++) {
@@ -1191,6 +1228,252 @@ function getAvailableEquipmentQuantity_(equipmentId) {
   return Math.max(0, equipment.totalQuantity - getIssuedEquipmentQuantity_(equipmentId));
 }
 
+function appendIssuedEquipmentRow_(record) {
+  appendRow_(SHEETS.EQUIPMENT_LEDGER, {
+    ID: generateId_(),
+    EquipmentID: record.equipmentId,
+    EquipmentName: record.equipmentName || getEquipmentName_(record.equipmentId),
+    Quantity: Number(record.quantity || 0),
+    IssuedTo: record.issuedTo || "",
+    EmployeeID: record.employeeId || "",
+    Department: record.department || "",
+    IssueDate: todayIso_(),
+    ExpectedReturnDate: record.expectedReturnDate || "",
+    ReturnDate: "",
+    Status: "issued",
+  });
+}
+
+function resolveEquipmentEmployee_(payload) {
+  const employeeId = String(payload.employeeId || "").trim();
+  if (employeeId) {
+    return getEmployeeById_(employeeId);
+  }
+  return getEmployeeByName_(payload.issuedTo);
+}
+
+function getActiveEquipmentRowsForEmployee_(employeeId, employeeName) {
+  const rows = getRows_(SHEETS.EQUIPMENT_LEDGER);
+  const normalizedName = String(employeeName || "").trim();
+
+  return rows.filter(function (row) {
+    if (String(row.Status) === "returned") {
+      return false;
+    }
+
+    if (employeeId && String(row.EmployeeID || "").trim() === String(employeeId)) {
+      return true;
+    }
+
+    return !String(row.EmployeeID || "").trim() && String(row.IssuedTo || "").trim() === normalizedName;
+  });
+}
+
+function normalizeEquipmentAssignmentTargets_(assignments) {
+  const list = Array.isArray(assignments) ? assignments : [];
+  const targets = {};
+
+  list.forEach(function (item) {
+    const equipmentId = String(item && item.equipmentId || "").trim();
+    const targetQuantity = Number(item && item.targetQuantity);
+
+    if (!equipmentId) {
+      throw new Error("Missing equipment ID");
+    }
+    if (isNaN(targetQuantity) || targetQuantity < 0 || Math.floor(targetQuantity) !== targetQuantity) {
+      throw new Error("Invalid equipment quantity");
+    }
+
+    targets[equipmentId] = targetQuantity;
+  });
+
+  return targets;
+}
+
+function returnEquipmentQuantity_(ledgerId, quantityToReturn) {
+  const quantity = Number(quantityToReturn);
+  if (isNaN(quantity) || quantity <= 0) {
+    throw new Error("Invalid equipment quantity");
+  }
+
+  const sheet = getSheet_(SHEETS.EQUIPMENT_LEDGER);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) {
+    throw new Error("Equipment ledger entry not found");
+  }
+
+  const headers = values[0];
+  const idIndex = headers.indexOf("ID");
+  const quantityIndex = headers.indexOf("Quantity");
+  const statusIndex = headers.indexOf("Status");
+  const returnDateIndex = headers.indexOf("ReturnDate");
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    if (String(values[rowIndex][idIndex]) !== String(ledgerId)) {
+      continue;
+    }
+
+    const currentQuantity = numberValue_(values[rowIndex][quantityIndex]);
+    const currentStatus = String(values[rowIndex][statusIndex] || "");
+
+    if (currentStatus === "returned") {
+      throw new Error("Equipment already returned");
+    }
+    if (quantity > currentQuantity) {
+      throw new Error("Invalid equipment quantity");
+    }
+
+    if (quantity === currentQuantity) {
+      sheet.getRange(rowIndex + 1, statusIndex + 1).setValue("returned");
+      if (returnDateIndex !== -1) {
+        sheet.getRange(rowIndex + 1, returnDateIndex + 1).setValue(todayIso_());
+      }
+      return;
+    }
+
+    const rowObject = {};
+    headers.forEach(function (header, index) {
+      rowObject[header] = values[rowIndex][index];
+    });
+
+    sheet.getRange(rowIndex + 1, quantityIndex + 1).setValue(currentQuantity - quantity);
+
+    appendRow_(SHEETS.EQUIPMENT_LEDGER, {
+      ID: generateId_(),
+      EquipmentID: rowObject.EquipmentID,
+      EquipmentName: rowObject.EquipmentName,
+      Quantity: quantity,
+      IssuedTo: rowObject.IssuedTo,
+      EmployeeID: rowObject.EmployeeID || "",
+      Department: rowObject.Department,
+      IssueDate: rowObject.IssueDate,
+      ExpectedReturnDate: rowObject.ExpectedReturnDate || "",
+      ReturnDate: todayIso_(),
+      Status: "returned",
+    });
+    return;
+  }
+
+  throw new Error("Equipment ledger entry not found");
+}
+
+function syncEmployeeEquipmentAssignments_(payload) {
+  const employeeId = String(payload.employeeId || "").trim();
+  const employee = getEmployeeById_(employeeId);
+
+  if (!employeeId) {
+    throw new Error("Missing employee ID");
+  }
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+
+  const assignmentTargets = normalizeEquipmentAssignmentTargets_(payload.assignments);
+  const activeRows = getActiveEquipmentRowsForEmployee_(employee.id, employee.name);
+  const currentByEquipment = {};
+
+  activeRows.forEach(function (row) {
+    const equipmentId = String(row.EquipmentID || "");
+    currentByEquipment[equipmentId] = (currentByEquipment[equipmentId] || 0) + numberValue_(row.Quantity);
+  });
+
+  Object.keys(assignmentTargets).forEach(function (equipmentId) {
+    const equipment = getEquipmentTypeById_(equipmentId);
+    if (!equipment) {
+      throw new Error("Equipment not found");
+    }
+
+    const currentQuantity = currentByEquipment[equipmentId] || 0;
+    const maxAllowed = getAvailableEquipmentQuantity_(equipmentId) + currentQuantity;
+    if (assignmentTargets[equipmentId] > maxAllowed) {
+      throw new Error("Not enough available equipment to issue");
+    }
+  });
+
+  Object.keys(assignmentTargets).forEach(function (equipmentId) {
+    const targetQuantity = assignmentTargets[equipmentId];
+    const currentQuantity = currentByEquipment[equipmentId] || 0;
+    const delta = targetQuantity - currentQuantity;
+
+    if (delta > 0) {
+      appendIssuedEquipmentRow_({
+        equipmentId: equipmentId,
+        equipmentName: getEquipmentName_(equipmentId),
+        quantity: delta,
+        issuedTo: employee.name,
+        employeeId: employee.id,
+        department: employee.department,
+        expectedReturnDate: "",
+      });
+      return;
+    }
+
+    if (delta < 0) {
+      var quantityToReturn = Math.abs(delta);
+      const rowsToReturn = activeRows
+        .filter(function (row) {
+          return String(row.EquipmentID || "") === String(equipmentId);
+        })
+        .sort(function (a, b) {
+          return stringValue_(a.IssueDate).localeCompare(stringValue_(b.IssueDate));
+        });
+
+      for (var index = 0; index < rowsToReturn.length && quantityToReturn > 0; index++) {
+        const rowQuantity = numberValue_(rowsToReturn[index].Quantity);
+        const chunk = Math.min(quantityToReturn, rowQuantity);
+        returnEquipmentQuantity_(rowsToReturn[index].ID, chunk);
+        quantityToReturn -= chunk;
+      }
+
+      if (quantityToReturn > 0) {
+        throw new Error("Invalid equipment quantity");
+      }
+    }
+  });
+
+  return jsonResponse_({ success: true });
+}
+
+function syncActiveEquipmentLoansForEmployee_(employeeId, previousName, nextName, nextDepartment) {
+  const sheet = getSheet_(SHEETS.EQUIPMENT_LEDGER);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+
+  const headers = values[0];
+  const statusIndex = headers.indexOf("Status");
+  const issuedToIndex = headers.indexOf("IssuedTo");
+  const employeeIdIndex = headers.indexOf("EmployeeID");
+  const departmentIndex = headers.indexOf("Department");
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    const status = String(values[rowIndex][statusIndex] || "");
+    const rowEmployeeId = employeeIdIndex === -1 ? "" : String(values[rowIndex][employeeIdIndex] || "").trim();
+    const issuedTo = issuedToIndex === -1 ? "" : String(values[rowIndex][issuedToIndex] || "").trim();
+
+    if (status === "returned") {
+      continue;
+    }
+
+    const matchesEmployee =
+      rowEmployeeId === String(employeeId) ||
+      (!rowEmployeeId && issuedTo === String(previousName).trim());
+
+    if (!matchesEmployee) {
+      continue;
+    }
+
+    if (issuedToIndex !== -1) {
+      sheet.getRange(rowIndex + 1, issuedToIndex + 1).setValue(nextName);
+    }
+    if (employeeIdIndex !== -1) {
+      sheet.getRange(rowIndex + 1, employeeIdIndex + 1).setValue(employeeId);
+    }
+    if (departmentIndex !== -1) {
+      sheet.getRange(rowIndex + 1, departmentIndex + 1).setValue(nextDepartment);
+    }
+  }
+}
+
 function foodProductExists_(productName) {
   return nameExistsInSheet_(SHEETS.FOOD_CATALOG, "Name", productName);
 }
@@ -1251,11 +1534,17 @@ function getDepartmentDeleteError_(departmentName) {
   return "";
 }
 
-function employeeHasActiveEquipmentLoans_(employeeName) {
+function employeeHasActiveEquipmentLoans_(employeeId, employeeName) {
   const rows = getRows_(SHEETS.EQUIPMENT_LEDGER);
   for (var index = 0; index < rows.length; index++) {
     if (
-      String(rows[index].IssuedTo) === String(employeeName) &&
+      (
+        String(rows[index].EmployeeID || "").trim() === String(employeeId || "").trim() ||
+        (
+          !String(rows[index].EmployeeID || "").trim() &&
+          String(rows[index].IssuedTo) === String(employeeName)
+        )
+      ) &&
       String(rows[index].Status) !== "returned"
     ) {
       return true;

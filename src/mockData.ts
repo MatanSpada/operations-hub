@@ -72,12 +72,12 @@ export const MOCK_DATA: InitialData = {
 
   // ── Equipment Ledger ──────────────────────────────────────────────
   equipmentLedger: [
-    { id: "l1", equipmentId: "eq1", equipmentName: "מקדחה", quantity: 3, issuedTo: "יוסי כהן", department: "תפעול", issueDate: "2025-03-01", expectedReturnDate: "2025-03-10", status: "overdue" },
-    { id: "l2", equipmentId: "eq2", equipmentName: "גנרטור", quantity: 1, issuedTo: "דוד מזרחי", department: "אחזקה", issueDate: "2025-03-05", expectedReturnDate: "2025-03-20", status: "issued" },
-    { id: "l3", equipmentId: "eq3", equipmentName: "מזגן ניידי", quantity: 2, issuedTo: "אמיר בן דוד", department: "אחזקה", issueDate: "2025-02-20", expectedReturnDate: "2025-02-28", status: "overdue" },
-    { id: "l4", equipmentId: "eq1", equipmentName: "מקדחה", quantity: 2, issuedTo: "שלמה גרין", department: "ביטחון", issueDate: "2025-03-08", expectedReturnDate: "2025-03-15", status: "issued" },
-    { id: "l5", equipmentId: "eq4", equipmentName: "מדחס אוויר", quantity: 1, issuedTo: "גיל פרידמן", department: "תפעול", issueDate: "2025-03-10", status: "issued" },
-    { id: "l6", equipmentId: "eq2", equipmentName: "גנרטור", quantity: 1, issuedTo: "יוסי כהן", department: "תפעול", issueDate: "2025-02-10", returnDate: "2025-02-20", status: "returned" },
+    { id: "l1", equipmentId: "eq1", equipmentName: "מקדחה", quantity: 3, issuedTo: "יוסי כהן", employeeId: "e1", department: "תפעול", issueDate: "2025-03-01", expectedReturnDate: "2025-03-10", status: "overdue" },
+    { id: "l2", equipmentId: "eq2", equipmentName: "גנרטור", quantity: 1, issuedTo: "דוד מזרחי", employeeId: "e3", department: "אחזקה", issueDate: "2025-03-05", expectedReturnDate: "2025-03-20", status: "issued" },
+    { id: "l3", equipmentId: "eq3", equipmentName: "מזגן ניידי", quantity: 2, issuedTo: "אמיר בן דוד", employeeId: "e7", department: "אחזקה", issueDate: "2025-02-20", expectedReturnDate: "2025-02-28", status: "overdue" },
+    { id: "l4", equipmentId: "eq1", equipmentName: "מקדחה", quantity: 2, issuedTo: "שלמה גרין", employeeId: "e5", department: "ביטחון", issueDate: "2025-03-08", expectedReturnDate: "2025-03-15", status: "issued" },
+    { id: "l5", equipmentId: "eq4", equipmentName: "מדחס אוויר", quantity: 1, issuedTo: "גיל פרידמן", employeeId: "e9", department: "תפעול", issueDate: "2025-03-10", status: "issued" },
+    { id: "l6", equipmentId: "eq2", equipmentName: "גנרטור", quantity: 1, issuedTo: "יוסי כהן", employeeId: "e1", department: "תפעול", issueDate: "2025-02-10", returnDate: "2025-02-20", status: "returned" },
   ],
 
   // ── Food Products ─────────────────────────────────────────────────

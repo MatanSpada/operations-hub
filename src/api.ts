@@ -149,6 +149,7 @@ export const api = {
     equipmentId: string;
     quantity: number;
     issuedTo: string;
+    employeeId?: string;
     department: string;
     expectedReturnDate?: string;
   }) => postAction("issueEquipment", data),
@@ -157,9 +158,18 @@ export const api = {
     equipmentId: string;
     quantity: number;
     issuedTo: string;
+    employeeId?: string;
     department: string;
     expectedReturnDate?: string;
   }) => postActionDetailed("issueEquipment", data),
+
+  syncEmployeeEquipmentAssignmentsDetailed: (data: {
+    employeeId: string;
+    assignments: Array<{
+      equipmentId: string;
+      targetQuantity: number;
+    }>;
+  }) => postActionDetailed("syncEmployeeEquipmentAssignments", data),
 
   createEquipmentType: (data: {
     name: string;
