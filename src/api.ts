@@ -164,7 +164,8 @@ export const api = {
   }) => postActionDetailed("issueEquipment", data),
 
   syncEmployeeEquipmentAssignmentsDetailed: (data: {
-    employeeId: string;
+    issuedTo: string;
+    employeeId?: string;
     department?: string;
     expectedReturnDate?: string;
     applyMetadataToExisting?: boolean;

@@ -1358,22 +1358,24 @@ function returnEquipmentQuantity_(ledgerId, quantityToReturn) {
 }
 
 function syncEmployeeEquipmentAssignments_(payload) {
+  const issuedTo = String(payload.issuedTo || "").trim();
   const employeeId = String(payload.employeeId || "").trim();
-  const employee = getEmployeeById_(employeeId);
+  const employee = employeeId ? getEmployeeById_(employeeId) : null;
 
-  if (!employeeId) {
-    throw new Error("Missing employee ID");
+  if (!issuedTo) {
+    throw new Error("Missing issued-to name");
   }
-  if (!employee) {
+  if (employeeId && !employee) {
     throw new Error("Employee not found");
   }
 
-  const nextDepartment = String(payload.department || "").trim() || employee.department || "";
+  const effectiveName = employee ? employee.name : issuedTo;
+  const nextDepartment = String(payload.department || "").trim() || (employee ? employee.department : "");
   const nextExpectedReturnDate = String(payload.expectedReturnDate || "").trim();
   const applyMetadataToExisting = Boolean(payload.applyMetadataToExisting);
 
   const assignmentTargets = normalizeEquipmentAssignmentTargets_(payload.assignments);
-  const activeRows = getActiveEquipmentRowsForEmployee_(employee.id, employee.name);
+  const activeRows = getActiveEquipmentRowsForEmployee_(employee ? employee.id : "", effectiveName);
   const currentByEquipment = {};
 
   activeRows.forEach(function (row) {
@@ -1404,8 +1406,8 @@ function syncEmployeeEquipmentAssignments_(payload) {
         equipmentId: equipmentId,
         equipmentName: getEquipmentName_(equipmentId),
         quantity: delta,
-        issuedTo: employee.name,
-        employeeId: employee.id,
+        issuedTo: effectiveName,
+        employeeId: employee ? employee.id : "",
         department: nextDepartment,
         expectedReturnDate: nextExpectedReturnDate,
       });
@@ -1437,8 +1439,8 @@ function syncEmployeeEquipmentAssignments_(payload) {
 
   if (applyMetadataToExisting) {
     syncActiveEquipmentLoanMetadataForEmployee_(
-      employee.id,
-      employee.name,
+      employee ? employee.id : "",
+      effectiveName,
       nextDepartment,
       nextExpectedReturnDate
     );

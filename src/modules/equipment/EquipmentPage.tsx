@@ -30,7 +30,7 @@ import {
   isEquipmentOverdue,
 } from "@/utils";
 import { api } from "@/api";
-import { Zap, AlertTriangle, Plus, ArrowRightLeft, Search } from "lucide-react";
+import { Zap, AlertTriangle, Plus, ArrowRightLeft } from "lucide-react";
 
 interface Props { data: InitialData; onRefresh: () => void; }
 
@@ -114,6 +114,9 @@ function formatEquipmentActionError(error?: string): string {
   if (error === "Missing employee ID") {
     return "יש לבחור עובד לפני שמירת ההחתמה";
   }
+  if (error === "Missing issued-to name") {
+    return "יש להזין שם חותם לפני שמירת ההחתמה";
+  }
   return error;
 }
 
@@ -129,9 +132,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [issuedToSearch, setIssuedToSearch] = useState("");
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
-  const [employeeSearchFocused, setEmployeeSearchFocused] = useState(false);
+  const [assignmentSignerName, setAssignmentSignerName] = useState("");
   const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
   const [assignmentDetails, setAssignmentDetails] = useState({
@@ -209,29 +210,22 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     );
   }, [activeLedger, equipmentLedger, issuedToSearch, selectedType]);
 
-  const selectedEmployee = useMemo(
-    () => employeeById.get(selectedEmployeeId) ?? null,
-    [employeeById, selectedEmployeeId]
+  const normalizedAssignmentSignerName = assignmentSignerName.trim();
+  const matchedSignerEmployee = useMemo(
+    () => employeeByName.get(normalizedAssignmentSignerName) ?? null,
+    [employeeByName, normalizedAssignmentSignerName]
   );
 
-  const filteredEmployeeOptions = useMemo(() => {
-    const normalizedSearch = employeeSearchQuery.trim();
-    if (!normalizedSearch) {
-      return sortedEmployees.slice(0, 8);
-    }
-
-    return sortedEmployees
-      .filter((employee) =>
-        employee.name.includes(normalizedSearch) ||
-        employee.department.includes(normalizedSearch)
-      )
-      .slice(0, 8);
-  }, [employeeSearchQuery, sortedEmployees]);
-
   const selectedEmployeeActiveLedger = useMemo(() => {
-    if (!selectedEmployee) return [];
-    return equipmentLedger.filter((entry) => isLedgerAssignedToEmployee(entry, selectedEmployee));
-  }, [equipmentLedger, selectedEmployee]);
+    if (!normalizedAssignmentSignerName) return [];
+    return equipmentLedger.filter((entry) => {
+      if (entry.status === "returned") return false;
+      if (matchedSignerEmployee) {
+        return isLedgerAssignedToEmployee(entry, matchedSignerEmployee);
+      }
+      return entry.issuedTo === normalizedAssignmentSignerName;
+    });
+  }, [equipmentLedger, matchedSignerEmployee, normalizedAssignmentSignerName]);
 
   const selectedEmployeeCurrentByEquipment = useMemo(() => {
     const map = new Map<string, number>();
@@ -247,8 +241,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   );
 
   const selectedEmployeeWarning = useMemo(
-    () => getEmployeeEquipmentWarning(selectedEmployee ?? undefined, selectedEmployeeActiveUnits),
-    [selectedEmployee, selectedEmployeeActiveUnits]
+    () => getEmployeeEquipmentWarning(matchedSignerEmployee ?? undefined, selectedEmployeeActiveUnits),
+    [matchedSignerEmployee, selectedEmployeeActiveUnits]
   );
 
   const selectedEmployeeActiveDepartments = useMemo(
@@ -273,11 +267,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     [selectedEmployeeActiveLedger]
   );
 
-  const hasMixedActiveDepartments = selectedEmployeeActiveDepartments.length > 1;
-  const hasMixedActiveExpectedReturnDates = selectedEmployeeActiveExpectedReturnDates.length > 1;
-
   useEffect(() => {
-    if (!selectedEmployee) {
+    if (!normalizedAssignmentSignerName) {
       setAssignmentDraft({});
       setAssignmentDetails({ department: "", expectedReturnDate: "" });
       setAssignmentDetailsBaseline({ department: "", expectedReturnDate: "" });
@@ -293,7 +284,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     const nextDepartment =
       selectedEmployeeActiveDepartments.length === 1
         ? selectedEmployeeActiveDepartments[0]
-        : selectedEmployee.department;
+        : matchedSignerEmployee?.department || "";
     const nextExpectedReturnDate =
       selectedEmployeeActiveExpectedReturnDates.length === 1
         ? selectedEmployeeActiveExpectedReturnDates[0]
@@ -311,10 +302,11 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     setAssignmentError(null);
   }, [
     equipmentTypes,
-    selectedEmployee,
+    normalizedAssignmentSignerName,
     selectedEmployeeActiveDepartments,
     selectedEmployeeActiveExpectedReturnDates,
     selectedEmployeeCurrentByEquipment,
+    matchedSignerEmployee,
   ]);
 
   const allAssignmentRows = useMemo(
@@ -347,12 +339,12 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   );
 
   const hasAssignmentMetadataChanges = useMemo(() => {
-    if (!selectedEmployee) return false;
+    if (!normalizedAssignmentSignerName) return false;
     return (
       assignmentDetails.department.trim() !== assignmentDetailsBaseline.department.trim() ||
       (assignmentDetails.expectedReturnDate || "") !== (assignmentDetailsBaseline.expectedReturnDate || "")
     );
-  }, [assignmentDetails, assignmentDetailsBaseline, selectedEmployee]);
+  }, [assignmentDetails, assignmentDetailsBaseline, normalizedAssignmentSignerName]);
 
   const resetActionModal = () => {
     setActionItem(null);
@@ -445,29 +437,6 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     onRefresh();
   };
 
-  const handleEmployeeSearchChange = (value: string) => {
-    setEmployeeSearchQuery(value);
-    setEmployeeSearchFocused(true);
-
-    const normalizedValue = value.trim();
-    const exactMatch = sortedEmployees.find(
-      (employee) => employee.name.trim() === normalizedValue
-    );
-
-    if (exactMatch) {
-      setSelectedEmployeeId(exactMatch.id);
-      return;
-    }
-
-    setSelectedEmployeeId("");
-  };
-
-  const selectEmployeeFromSearch = (employee: Employee) => {
-    setSelectedEmployeeId(employee.id);
-    setEmployeeSearchQuery(employee.name);
-    setEmployeeSearchFocused(false);
-  };
-
   const updateAssignmentDraft = (equipmentId: string, nextQuantity: number) => {
     const row = typesWithQty.find((equipment) => equipment.id === equipmentId);
     const currentQuantity = selectedEmployeeCurrentByEquipment.get(equipmentId) ?? 0;
@@ -481,8 +450,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   };
 
   const handleSyncEmployeeAssignments = async () => {
-    if (!selectedEmployee) {
-      setAssignmentError("יש לבחור עובד לפני שמירת ההחתמה");
+    if (!normalizedAssignmentSignerName) {
+      setAssignmentError("יש להזין שם חותם לפני שמירת ההחתמה");
       return;
     }
 
@@ -490,8 +459,9 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     setAssignmentError(null);
 
     const result = await api.syncEmployeeEquipmentAssignmentsDetailed({
-      employeeId: selectedEmployee.id,
-      department: assignmentDetails.department.trim() || selectedEmployee.department,
+      issuedTo: normalizedAssignmentSignerName,
+      employeeId: matchedSignerEmployee?.id,
+      department: assignmentDetails.department.trim() || matchedSignerEmployee?.department || "",
       expectedReturnDate: assignmentDetails.expectedReturnDate || undefined,
       applyMetadataToExisting: hasAssignmentMetadataChanges,
       assignments: equipmentTypes.map((equipment) => ({
@@ -811,7 +781,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
               type="button"
               onClick={handleSyncEmployeeAssignments}
               disabled={
-                !selectedEmployee ||
+                !normalizedAssignmentSignerName ||
                 (pendingAssignmentChanges.length === 0 && !hasAssignmentMetadataChanges) ||
                 isSyncingAssignments
               }
@@ -858,89 +828,76 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
           </>
         ) : (
           <div className="space-y-4 rounded-lg bg-card p-4 shadow-card sm:p-5">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,18rem)_minmax(0,1fr)] xl:items-end">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">בחירת עובד</label>
-                <div className="relative">
-                  <Search
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <input
-                    type="text"
-                    value={employeeSearchQuery}
-                    onChange={(event) => handleEmployeeSearchChange(event.target.value)}
-                    onFocus={() => setEmployeeSearchFocused(true)}
-                    onBlur={() => {
-                      window.setTimeout(() => {
-                        setEmployeeSearchFocused(false);
-                      }, 120);
-                    }}
-                    placeholder="הקלד שם עובד..."
-                    className="h-10 w-full rounded-md border border-border bg-background pl-3 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    dir="rtl"
-                  />
-
-                  {employeeSearchFocused && (
-                    <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-card">
-                      {filteredEmployeeOptions.length > 0 ? (
-                        filteredEmployeeOptions.map((employee) => (
-                          <button
-                            key={employee.id}
-                            type="button"
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              selectEmployeeFromSearch(employee);
-                            }}
-                            className={`flex w-full flex-col items-start gap-1 px-3 py-2 text-right text-sm transition-colors hover:bg-muted ${
-                              selectedEmployeeId === employee.id ? "bg-primary/5" : ""
-                            }`}
-                          >
-                            <span className="font-medium text-foreground">{employee.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {employee.department}
-                            </span>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-3 text-sm text-muted-foreground">
-                          לא נמצא עובד תואם במאגר.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  הקלד כדי לחפש, ולאחר מכן בחר עובד קיים מהרשימה המסוננת.
-                </p>
+                <label className="text-sm font-medium">שם חותם</label>
+                <input
+                  type="text"
+                  value={assignmentSignerName}
+                  onChange={(event) => setAssignmentSignerName(event.target.value)}
+                  placeholder="הקלד שם חותם..."
+                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  dir="rtl"
+                />
               </div>
 
-              <SearchInput
-                value={employeeEquipmentSearch}
-                onChange={setEmployeeEquipmentSearch}
-                placeholder="חיפוש פריט לפי שם..."
-                className="w-full"
-              />
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">מחלקה להנפקה</label>
+                <select
+                  value={assignmentDetails.department}
+                  onChange={(event) =>
+                    setAssignmentDetails((current) => ({
+                      ...current,
+                      department: event.target.value,
+                    }))
+                  }
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  dir="rtl"
+                >
+                  <option value="">בחר מחלקה</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium">חיפוש פריט</label>
+                <SearchInput
+                  value={employeeEquipmentSearch}
+                  onChange={setEmployeeEquipmentSearch}
+                  placeholder="חיפוש פריט לפי שם..."
+                  className="w-full"
+                />
+              </div>
             </div>
 
-            {!selectedEmployee ? (
+            {!normalizedAssignmentSignerName ? (
               <div className="rounded-lg border border-dashed border-border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
-                בחר עובד מהרשימה כדי להחתים או להסיר עבורו ציוד ממאגר העובדים הקיים.
+                הזן שם חותם כדי להחתים או להסיר עבורו ציוד.
               </div>
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">עובד נבחר</div>
-                    <div className="mt-1 font-semibold text-foreground">{selectedEmployee.name}</div>
-                    <div className="text-xs text-muted-foreground">{selectedEmployee.department}</div>
+                    <div className="text-xs text-muted-foreground">שם חותם</div>
+                    <div className="mt-1 font-semibold text-foreground">{normalizedAssignmentSignerName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {matchedSignerEmployee ? matchedSignerEmployee.department : "שם חופשי"}
+                    </div>
                   </div>
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">סטטוס עובד</div>
+                    <div className="text-xs text-muted-foreground">סטטוס</div>
                     <div className="mt-2">
-                      <Badge variant={employeeStatusVariant(selectedEmployee.status)}>
-                        {employeeStatusLabel(selectedEmployee.status)}
-                      </Badge>
+                      {matchedSignerEmployee ? (
+                        <Badge variant={employeeStatusVariant(matchedSignerEmployee.status)}>
+                          {employeeStatusLabel(matchedSignerEmployee.status)}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">לא מקושר לעובד קיים</span>
+                      )}
                     </div>
                   </div>
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
@@ -953,32 +910,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 rounded-lg border border-border bg-background px-4 py-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,14rem)_minmax(0,1fr)]">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">מחלקה להנפקה</label>
-                    <select
-                      value={assignmentDetails.department}
-                      onChange={(event) =>
-                        setAssignmentDetails((current) => ({
-                          ...current,
-                          department: event.target.value,
-                        }))
-                      }
-                      className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      dir="rtl"
-                    >
-                      <option value="">בחר מחלקה</option>
-                      {departments.map((department) => (
-                        <option key={department.id} value={department.name}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-muted-foreground">
-                      ברירת המחדל נשענת על העובד או על ההשאלות הפעילות הקיימות שלו.
-                    </p>
-                  </div>
-
+                <div className="rounded-lg border border-border bg-background px-4 py-4">
                   <div className="flex flex-col gap-1">
                     <DateDisplayInput
                       label="תאריך החזרה צפוי"
@@ -990,23 +922,6 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                         }))
                       }
                     />
-                    <p className="text-xs text-muted-foreground">
-                      יחול על הנפקות חדשות ובשמירה יעדכן גם השאלות פעילות של אותו עובד.
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                    <div className="font-medium text-foreground">פרטי ההנפקה לעובד</div>
-                    <div className="mt-2 space-y-1">
-                      <p>הכמויות נשארות ברמת כל פריט בטבלה, בדיוק כמו עכשיו.</p>
-                      <p>המחלקה ותאריך ההחזרה שומרו יחד עם ה-ledger האמיתי ולא רק מקומית.</p>
-                      {hasMixedActiveDepartments && (
-                        <p>לעובד קיימות כרגע השאלות עם מחלקות שונות. שמירה תיישר אותן למחלקה שנבחרה.</p>
-                      )}
-                      {hasMixedActiveExpectedReturnDates && (
-                        <p>לעובד קיימים כרגע תאריכי החזרה שונים. שמירה תיישר אותם לתאריך שנבחר.</p>
-                      )}
-                    </div>
                   </div>
                 </div>
 
