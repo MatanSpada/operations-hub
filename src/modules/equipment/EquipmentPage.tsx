@@ -29,7 +29,7 @@ import {
   isEquipmentOverdue,
 } from "@/utils";
 import { api } from "@/api";
-import { Zap, AlertTriangle, Plus, ArrowRightLeft } from "lucide-react";
+import { Zap, AlertTriangle, Plus, ArrowRightLeft, Search } from "lucide-react";
 
 interface Props { data: InitialData; onRefresh: () => void; }
 
@@ -129,6 +129,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [issuedToSearch, setIssuedToSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+  const [employeeSearchFocused, setEmployeeSearchFocused] = useState(false);
   const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
   const [assignmentDetails, setAssignmentDetails] = useState({
@@ -210,6 +212,20 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     () => employeeById.get(selectedEmployeeId) ?? null,
     [employeeById, selectedEmployeeId]
   );
+
+  const filteredEmployeeOptions = useMemo(() => {
+    const normalizedSearch = employeeSearchQuery.trim();
+    if (!normalizedSearch) {
+      return sortedEmployees.slice(0, 8);
+    }
+
+    return sortedEmployees
+      .filter((employee) =>
+        employee.name.includes(normalizedSearch) ||
+        employee.department.includes(normalizedSearch)
+      )
+      .slice(0, 8);
+  }, [employeeSearchQuery, sortedEmployees]);
 
   const selectedEmployeeActiveLedger = useMemo(() => {
     if (!selectedEmployee) return [];
@@ -426,6 +442,29 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const handleReturn = async (ledgerId: string) => {
     await api.returnEquipment(ledgerId);
     onRefresh();
+  };
+
+  const handleEmployeeSearchChange = (value: string) => {
+    setEmployeeSearchQuery(value);
+    setEmployeeSearchFocused(true);
+
+    const normalizedValue = value.trim();
+    const exactMatch = sortedEmployees.find(
+      (employee) => employee.name.trim() === normalizedValue
+    );
+
+    if (exactMatch) {
+      setSelectedEmployeeId(exactMatch.id);
+      return;
+    }
+
+    setSelectedEmployeeId("");
+  };
+
+  const selectEmployeeFromSearch = (employee: Employee) => {
+    setSelectedEmployeeId(employee.id);
+    setEmployeeSearchQuery(employee.name);
+    setEmployeeSearchFocused(false);
   };
 
   const updateAssignmentDraft = (equipmentId: string, nextQuantity: number) => {
@@ -821,19 +860,58 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium">בחירת עובד</label>
-                <select
-                  value={selectedEmployeeId}
-                  onChange={(event) => setSelectedEmployeeId(event.target.value)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  dir="rtl"
-                >
-                  <option value="">בחר עובד</option>
-                  {sortedEmployees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name} / {employee.department}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Search
+                    size={15}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    type="text"
+                    value={employeeSearchQuery}
+                    onChange={(event) => handleEmployeeSearchChange(event.target.value)}
+                    onFocus={() => setEmployeeSearchFocused(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setEmployeeSearchFocused(false);
+                      }, 120);
+                    }}
+                    placeholder="הקלד שם עובד..."
+                    className="h-10 w-full rounded-md border border-border bg-background pl-3 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    dir="rtl"
+                  />
+
+                  {employeeSearchFocused && (
+                    <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-card">
+                      {filteredEmployeeOptions.length > 0 ? (
+                        filteredEmployeeOptions.map((employee) => (
+                          <button
+                            key={employee.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              selectEmployeeFromSearch(employee);
+                            }}
+                            className={`flex w-full flex-col items-start gap-1 px-3 py-2 text-right text-sm transition-colors hover:bg-muted ${
+                              selectedEmployeeId === employee.id ? "bg-primary/5" : ""
+                            }`}
+                          >
+                            <span className="font-medium text-foreground">{employee.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {employee.department}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-3 text-sm text-muted-foreground">
+                          לא נמצא עובד תואם במאגר.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  הקלד כדי לחפש, ולאחר מכן בחר עובד קיים מהרשימה המסוננת.
+                </p>
               </div>
 
               <SearchInput
