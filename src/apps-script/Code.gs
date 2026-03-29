@@ -1368,6 +1368,10 @@ function syncEmployeeEquipmentAssignments_(payload) {
     throw new Error("Employee not found");
   }
 
+  const nextDepartment = String(payload.department || "").trim() || employee.department || "";
+  const nextExpectedReturnDate = String(payload.expectedReturnDate || "").trim();
+  const applyMetadataToExisting = Boolean(payload.applyMetadataToExisting);
+
   const assignmentTargets = normalizeEquipmentAssignmentTargets_(payload.assignments);
   const activeRows = getActiveEquipmentRowsForEmployee_(employee.id, employee.name);
   const currentByEquipment = {};
@@ -1402,8 +1406,8 @@ function syncEmployeeEquipmentAssignments_(payload) {
         quantity: delta,
         issuedTo: employee.name,
         employeeId: employee.id,
-        department: employee.department,
-        expectedReturnDate: "",
+        department: nextDepartment,
+        expectedReturnDate: nextExpectedReturnDate,
       });
       return;
     }
@@ -1431,7 +1435,54 @@ function syncEmployeeEquipmentAssignments_(payload) {
     }
   });
 
+  if (applyMetadataToExisting) {
+    syncActiveEquipmentLoanMetadataForEmployee_(
+      employee.id,
+      employee.name,
+      nextDepartment,
+      nextExpectedReturnDate
+    );
+  }
+
   return jsonResponse_({ success: true });
+}
+
+function syncActiveEquipmentLoanMetadataForEmployee_(employeeId, employeeName, nextDepartment, nextExpectedReturnDate) {
+  const sheet = getSheet_(SHEETS.EQUIPMENT_LEDGER);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+
+  const headers = values[0];
+  const statusIndex = headers.indexOf("Status");
+  const issuedToIndex = headers.indexOf("IssuedTo");
+  const employeeIdIndex = headers.indexOf("EmployeeID");
+  const departmentIndex = headers.indexOf("Department");
+  const expectedReturnDateIndex = headers.indexOf("ExpectedReturnDate");
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    const status = String(values[rowIndex][statusIndex] || "");
+    const rowEmployeeId = employeeIdIndex === -1 ? "" : String(values[rowIndex][employeeIdIndex] || "").trim();
+    const issuedTo = issuedToIndex === -1 ? "" : String(values[rowIndex][issuedToIndex] || "").trim();
+
+    if (status === "returned") {
+      continue;
+    }
+
+    const matchesEmployee =
+      rowEmployeeId === String(employeeId) ||
+      (!rowEmployeeId && issuedTo === String(employeeName).trim());
+
+    if (!matchesEmployee) {
+      continue;
+    }
+
+    if (departmentIndex !== -1) {
+      sheet.getRange(rowIndex + 1, departmentIndex + 1).setValue(nextDepartment);
+    }
+    if (expectedReturnDateIndex !== -1) {
+      sheet.getRange(rowIndex + 1, expectedReturnDateIndex + 1).setValue(nextExpectedReturnDate);
+    }
+  }
 }
 
 function syncActiveEquipmentLoansForEmployee_(employeeId, previousName, nextName, nextDepartment) {

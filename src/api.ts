@@ -165,6 +165,9 @@ export const api = {
 
   syncEmployeeEquipmentAssignmentsDetailed: (data: {
     employeeId: string;
+    department?: string;
+    expectedReturnDate?: string;
+    applyMetadataToExisting?: boolean;
     assignments: Array<{
       equipmentId: string;
       targetQuantity: number;

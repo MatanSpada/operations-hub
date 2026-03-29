@@ -131,6 +131,14 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
+  const [assignmentDetails, setAssignmentDetails] = useState({
+    department: "",
+    expectedReturnDate: "",
+  });
+  const [assignmentDetailsBaseline, setAssignmentDetailsBaseline] = useState({
+    department: "",
+    expectedReturnDate: "",
+  });
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [isSyncingAssignments, setIsSyncingAssignments] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -226,9 +234,36 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     [selectedEmployee, selectedEmployeeActiveUnits]
   );
 
+  const selectedEmployeeActiveDepartments = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedEmployeeActiveLedger
+            .map((entry) => entry.department.trim())
+            .filter(Boolean)
+        )
+      ),
+    [selectedEmployeeActiveLedger]
+  );
+
+  const selectedEmployeeActiveExpectedReturnDates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedEmployeeActiveLedger.map((entry) => entry.expectedReturnDate || "")
+        )
+      ),
+    [selectedEmployeeActiveLedger]
+  );
+
+  const hasMixedActiveDepartments = selectedEmployeeActiveDepartments.length > 1;
+  const hasMixedActiveExpectedReturnDates = selectedEmployeeActiveExpectedReturnDates.length > 1;
+
   useEffect(() => {
     if (!selectedEmployee) {
       setAssignmentDraft({});
+      setAssignmentDetails({ department: "", expectedReturnDate: "" });
+      setAssignmentDetailsBaseline({ department: "", expectedReturnDate: "" });
       setAssignmentError(null);
       return;
     }
@@ -237,9 +272,33 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     equipmentTypes.forEach((equipment) => {
       nextDraft[equipment.id] = selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0;
     });
+
+    const nextDepartment =
+      selectedEmployeeActiveDepartments.length === 1
+        ? selectedEmployeeActiveDepartments[0]
+        : selectedEmployee.department;
+    const nextExpectedReturnDate =
+      selectedEmployeeActiveExpectedReturnDates.length === 1
+        ? selectedEmployeeActiveExpectedReturnDates[0]
+        : "";
+
     setAssignmentDraft(nextDraft);
+    setAssignmentDetails({
+      department: nextDepartment,
+      expectedReturnDate: nextExpectedReturnDate,
+    });
+    setAssignmentDetailsBaseline({
+      department: nextDepartment,
+      expectedReturnDate: nextExpectedReturnDate,
+    });
     setAssignmentError(null);
-  }, [equipmentTypes, selectedEmployee, selectedEmployeeCurrentByEquipment]);
+  }, [
+    equipmentTypes,
+    selectedEmployee,
+    selectedEmployeeActiveDepartments,
+    selectedEmployeeActiveExpectedReturnDates,
+    selectedEmployeeCurrentByEquipment,
+  ]);
 
   const allAssignmentRows = useMemo(
     () =>
@@ -269,6 +328,14 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     () => allAssignmentRows.filter((row) => row.delta !== 0),
     [allAssignmentRows]
   );
+
+  const hasAssignmentMetadataChanges = useMemo(() => {
+    if (!selectedEmployee) return false;
+    return (
+      assignmentDetails.department.trim() !== assignmentDetailsBaseline.department.trim() ||
+      (assignmentDetails.expectedReturnDate || "") !== (assignmentDetailsBaseline.expectedReturnDate || "")
+    );
+  }, [assignmentDetails, assignmentDetailsBaseline, selectedEmployee]);
 
   const resetActionModal = () => {
     setActionItem(null);
@@ -384,6 +451,9 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
 
     const result = await api.syncEmployeeEquipmentAssignmentsDetailed({
       employeeId: selectedEmployee.id,
+      department: assignmentDetails.department.trim() || selectedEmployee.department,
+      expectedReturnDate: assignmentDetails.expectedReturnDate || undefined,
+      applyMetadataToExisting: hasAssignmentMetadataChanges,
       assignments: equipmentTypes.map((equipment) => ({
         equipmentId: equipment.id,
         targetQuantity: assignmentDraft[equipment.id] ?? selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0,
@@ -700,10 +770,16 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             <button
               type="button"
               onClick={handleSyncEmployeeAssignments}
-              disabled={!selectedEmployee || pendingAssignmentChanges.length === 0 || isSyncingAssignments}
+              disabled={
+                !selectedEmployee ||
+                (pendingAssignmentChanges.length === 0 && !hasAssignmentMetadataChanges) ||
+                isSyncingAssignments
+              }
               className="inline-flex w-full items-center justify-center gap-2 self-start rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto xl:self-auto"
             >
-              {isSyncingAssignments ? "שומר..." : `שמור שינויים${pendingAssignmentChanges.length > 0 ? ` (${pendingAssignmentChanges.length})` : ""}`}
+              {isSyncingAssignments
+                ? "שומר..."
+                : `שמור שינויים${pendingAssignmentChanges.length > 0 ? ` (${pendingAssignmentChanges.length})` : ""}`}
             </button>
           )}
         </div>
@@ -795,6 +871,65 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
                     <div className="text-xs text-muted-foreground">שינויים ממתינים</div>
                     <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{pendingAssignmentChanges.length}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 rounded-lg border border-border bg-background px-4 py-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,14rem)_minmax(0,1fr)]">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">מחלקה להנפקה</label>
+                    <select
+                      value={assignmentDetails.department}
+                      onChange={(event) =>
+                        setAssignmentDetails((current) => ({
+                          ...current,
+                          department: event.target.value,
+                        }))
+                      }
+                      className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      dir="rtl"
+                    >
+                      <option value="">בחר מחלקה</option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.name}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      ברירת המחדל נשענת על העובד או על ההשאלות הפעילות הקיימות שלו.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">תאריך החזרה צפוי</label>
+                    <input
+                      type="date"
+                      value={assignmentDetails.expectedReturnDate}
+                      onChange={(event) =>
+                        setAssignmentDetails((current) => ({
+                          ...current,
+                          expectedReturnDate: event.target.value,
+                        }))
+                      }
+                      className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      יחול על הנפקות חדשות ובשמירה יעדכן גם השאלות פעילות של אותו עובד.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                    <div className="font-medium text-foreground">פרטי ההנפקה לעובד</div>
+                    <div className="mt-2 space-y-1">
+                      <p>הכמויות נשארות ברמת כל פריט בטבלה, בדיוק כמו עכשיו.</p>
+                      <p>המחלקה ותאריך ההחזרה שומרו יחד עם ה-ledger האמיתי ולא רק מקומית.</p>
+                      {hasMixedActiveDepartments && (
+                        <p>לעובד קיימות כרגע השאלות עם מחלקות שונות. שמירה תיישר אותן למחלקה שנבחרה.</p>
+                      )}
+                      {hasMixedActiveExpectedReturnDates && (
+                        <p>לעובד קיימים כרגע תאריכי החזרה שונים. שמירה תיישר אותם לתאריך שנבחר.</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
