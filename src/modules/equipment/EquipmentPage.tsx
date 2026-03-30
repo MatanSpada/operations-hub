@@ -21,8 +21,6 @@ import { SearchInput } from "@/components/shared/SearchInput";
 import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import {
   calcAvailableQty,
-  employeeStatusLabel,
-  employeeStatusVariant,
   equipmentStatusLabel,
   equipmentStatusVariant,
   formatDate,
@@ -266,6 +264,41 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       ),
     [selectedEmployeeActiveLedger]
   );
+
+  const activeSignerSummaries = useMemo(() => {
+    const groups = new Map<string, {
+      key: string;
+      name: string;
+      employeeId?: string;
+      department: string;
+      assignedUnits: number;
+    }>();
+
+    equipmentLedger
+      .filter((entry) => entry.status !== "returned")
+      .forEach((entry) => {
+        const key = entry.employeeId ? `employee:${entry.employeeId}` : `name:${entry.issuedTo}`;
+        const current = groups.get(key);
+
+        if (current) {
+          current.assignedUnits += entry.quantity;
+          if (!current.department && entry.department) {
+            current.department = entry.department;
+          }
+          return;
+        }
+
+        groups.set(key, {
+          key,
+          name: entry.issuedTo,
+          employeeId: entry.employeeId || undefined,
+          department: entry.department,
+          assignedUnits: entry.quantity,
+        });
+      });
+
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }, [equipmentLedger]);
 
   useEffect(() => {
     if (!normalizedAssignmentSignerName) {
@@ -874,13 +907,55 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
               </div>
             </div>
 
+            <div className="space-y-3 rounded-lg border border-border bg-background px-4 py-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    חתומים פעילים
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    לחץ על שם כדי לטעון את כל הציוד שמקושר אליו ולערוך את ההחתמה.
+                  </p>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {activeSignerSummaries.length} חתומים
+                </span>
+              </div>
+
+              {activeSignerSummaries.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {activeSignerSummaries.map((signer) => (
+                    <button
+                      key={signer.key}
+                      type="button"
+                      onClick={() => setAssignmentSignerName(signer.name)}
+                      className={`rounded-md border px-3 py-2 text-right text-sm transition-colors ${
+                        normalizedAssignmentSignerName === signer.name
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <span className="block font-medium">{signer.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {signer.department || "ללא מחלקה"} • {signer.assignedUnits} פריטים
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  אין כרגע חותמים פעילים על ציוד.
+                </div>
+              )}
+            </div>
+
             {!normalizedAssignmentSignerName ? (
               <div className="rounded-lg border border-dashed border-border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
-                הזן שם חותם כדי להחתים או להסיר עבורו ציוד.
+                בחר שם מהרשימה או הזן שם חותם כדי להחתים או להסיר עבורו ציוד.
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
                     <div className="text-xs text-muted-foreground">שם חותם</div>
                     <div className="mt-1 font-semibold text-foreground">{normalizedAssignmentSignerName}</div>
@@ -889,24 +964,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                     </div>
                   </div>
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">סטטוס</div>
-                    <div className="mt-2">
-                      {matchedSignerEmployee ? (
-                        <Badge variant={employeeStatusVariant(matchedSignerEmployee.status)}>
-                          {employeeStatusLabel(matchedSignerEmployee.status)}
-                        </Badge>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">לא מקושר לעובד קיים</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">יחידות פעילות</div>
+                    <div className="text-xs text-muted-foreground">פריטים משוייכים</div>
                     <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{selectedEmployeeActiveUnits}</div>
-                  </div>
-                  <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">שינויים ממתינים</div>
-                    <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{pendingAssignmentChanges.length}</div>
                   </div>
                 </div>
 
