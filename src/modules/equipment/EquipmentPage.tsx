@@ -34,6 +34,7 @@ interface Props { data: InitialData; onRefresh: () => void; }
 
 type EquipmentActionMode = "set_quantity" | "issue_item";
 type EquipmentSection = "issued_items" | "assign_by_name";
+type AssignmentViewMode = "assigned_items" | "add_items";
 type EquipmentTypeWithQty = EquipmentType & { available: number; issued: number };
 
 function isLedgerAssignedToEmployee(entry: EquipmentLedgerEntry, employee: Employee): boolean {
@@ -133,6 +134,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [assignmentSignerName, setAssignmentSignerName] = useState("");
   const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
+  const [assignmentViewMode, setAssignmentViewMode] = useState<AssignmentViewMode>("assigned_items");
   const [assignmentDetails, setAssignmentDetails] = useState({
     department: "",
     expectedReturnDate: "",
@@ -141,6 +143,8 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     department: "",
     expectedReturnDate: "",
   });
+  const [editingAssignedEquipmentId, setEditingAssignedEquipmentId] = useState<string | null>(null);
+  const [assignedQuantityInput, setAssignedQuantityInput] = useState("");
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [isSyncingAssignments, setIsSyncingAssignments] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -371,6 +375,20 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     [allAssignmentRows]
   );
 
+  const assignedItemRows = useMemo(() => {
+    const normalizedSearch = employeeEquipmentSearch.trim();
+    return allAssignmentRows.filter((equipment) => {
+      const isAssigned = equipment.currentQuantity > 0;
+      if (!isAssigned) return false;
+      return !normalizedSearch || equipment.name.includes(normalizedSearch);
+    });
+  }, [allAssignmentRows, employeeEquipmentSearch]);
+
+  const editingAssignedEquipment = useMemo(
+    () => allAssignmentRows.find((equipment) => equipment.id === editingAssignedEquipmentId) ?? null,
+    [allAssignmentRows, editingAssignedEquipmentId]
+  );
+
   const hasAssignmentMetadataChanges = useMemo(() => {
     if (!normalizedAssignmentSignerName) return false;
     return (
@@ -385,6 +403,38 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     setActionError(null);
     setStockForm({ quantity: "" });
     setIssueForm({ quantity: 1, issuedTo: "", employeeId: "", department: "", expectedReturnDate: "" });
+  };
+
+  const performAssignmentSync = async (targetOverrides?: Record<string, number>) => {
+    if (!normalizedAssignmentSignerName) {
+      setAssignmentError("יש להזין שם חותם לפני שמירת ההחתמה");
+      return false;
+    }
+
+    setIsSyncingAssignments(true);
+    setAssignmentError(null);
+
+    const result = await api.syncEmployeeEquipmentAssignmentsDetailed({
+      issuedTo: normalizedAssignmentSignerName,
+      employeeId: matchedSignerEmployee?.id,
+      department: assignmentDetails.department.trim() || matchedSignerEmployee?.department || "",
+      expectedReturnDate: assignmentDetails.expectedReturnDate || undefined,
+      applyMetadataToExisting: hasAssignmentMetadataChanges,
+      assignments: equipmentTypes.map((equipment) => ({
+        equipmentId: equipment.id,
+        targetQuantity: targetOverrides?.[equipment.id] ?? assignmentDraft[equipment.id] ?? selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0,
+      })),
+    });
+
+    if (!result.data) {
+      setAssignmentError(formatEquipmentActionError(result.error));
+      setIsSyncingAssignments(false);
+      return false;
+    }
+
+    await onRefresh();
+    setIsSyncingAssignments(false);
+    return true;
   };
 
   const openActionModal = (item: EquipmentTypeWithQty) => {
@@ -483,34 +533,38 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   };
 
   const handleSyncEmployeeAssignments = async () => {
-    if (!normalizedAssignmentSignerName) {
-      setAssignmentError("יש להזין שם חותם לפני שמירת ההחתמה");
-      return;
-    }
+    await performAssignmentSync();
+  };
 
-    setIsSyncingAssignments(true);
-    setAssignmentError(null);
+  const handleReturnAllAssigned = async () => {
+    const zeroTargets = Object.fromEntries(
+      equipmentTypes.map((equipment) => [equipment.id, 0])
+    ) as Record<string, number>;
+    await performAssignmentSync(zeroTargets);
+  };
 
-    const result = await api.syncEmployeeEquipmentAssignmentsDetailed({
-      issuedTo: normalizedAssignmentSignerName,
-      employeeId: matchedSignerEmployee?.id,
-      department: assignmentDetails.department.trim() || matchedSignerEmployee?.department || "",
-      expectedReturnDate: assignmentDetails.expectedReturnDate || undefined,
-      applyMetadataToExisting: hasAssignmentMetadataChanges,
-      assignments: equipmentTypes.map((equipment) => ({
-        equipmentId: equipment.id,
-        targetQuantity: assignmentDraft[equipment.id] ?? selectedEmployeeCurrentByEquipment.get(equipment.id) ?? 0,
-      })),
-    });
+  const openAssignedQuantityModal = (equipmentId: string) => {
+    const row = allAssignmentRows.find((equipment) => equipment.id === equipmentId);
+    if (!row) return;
+    setEditingAssignedEquipmentId(equipmentId);
+    setAssignedQuantityInput(String(row.targetQuantity));
+  };
 
-    if (!result.data) {
-      setAssignmentError(formatEquipmentActionError(result.error));
-      setIsSyncingAssignments(false);
-      return;
-    }
+  const closeAssignedQuantityModal = () => {
+    setEditingAssignedEquipmentId(null);
+    setAssignedQuantityInput("");
+  };
 
-    await onRefresh();
-    setIsSyncingAssignments(false);
+  const saveAssignedQuantityChange = () => {
+    if (!editingAssignedEquipment) return;
+    updateAssignmentDraft(editingAssignedEquipment.id, Number(assignedQuantityInput));
+    closeAssignedQuantityModal();
+  };
+
+  const markAssignedItemReturned = () => {
+    if (!editingAssignedEquipment) return;
+    updateAssignmentDraft(editingAssignedEquipment.id, 0);
+    closeAssignedQuantityModal();
   };
 
   const handleCreateEquipment = async () => {
@@ -689,6 +743,51 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     },
   ];
 
+  const assignedColumns = [
+    {
+      key: "name",
+      header: "פריט",
+      render: (equipment: typeof assignedItemRows[number]) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-foreground">{equipment.name}</span>
+          {equipment.delta !== 0 && (
+            <Badge variant={equipment.delta > 0 ? "success" : "warning"}>
+              {equipment.delta > 0 ? `יונפקו ${equipment.delta}` : `יוחזרו ${Math.abs(equipment.delta)}`}
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "currentQuantity",
+      header: "כמות חתומה",
+      render: (equipment: typeof assignedItemRows[number]) => equipment.currentQuantity,
+    },
+    {
+      key: "targetQuantity",
+      header: "כמות אחרי שינוי",
+      render: (equipment: typeof assignedItemRows[number]) => equipment.targetQuantity,
+    },
+    {
+      key: "expectedReturnDate",
+      header: "תאריך יעד",
+      render: () => formatDate(assignmentDetails.expectedReturnDate),
+    },
+    {
+      key: "actions",
+      header: "פעולה",
+      render: (equipment: typeof assignedItemRows[number]) => (
+        <button
+          type="button"
+          onClick={() => openAssignedQuantityModal(equipment.id)}
+          className="text-xs font-medium text-primary hover:text-primary/80"
+        >
+          שנה כמות
+        </button>
+      ),
+    },
+  ];
+
   return (
     <div className="animate-fade-in space-y-6">
       <PageHeader
@@ -861,7 +960,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
           </>
         ) : (
           <div className="space-y-4 rounded-lg bg-card p-4 shadow-card sm:p-5">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,18rem)_minmax(0,1fr)] xl:items-end">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,18rem)] xl:items-end">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium">שם חותם</label>
                 <input
@@ -894,16 +993,6 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">חיפוש פריט</label>
-                <SearchInput
-                  value={employeeEquipmentSearch}
-                  onChange={setEmployeeEquipmentSearch}
-                  placeholder="חיפוש פריט לפי שם..."
-                  className="w-full"
-                />
               </div>
             </div>
 
@@ -964,8 +1053,20 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                     </div>
                   </div>
                   <div className="rounded-lg bg-muted/40 px-4 py-3">
-                    <div className="text-xs text-muted-foreground">פריטים משוייכים</div>
-                    <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{selectedEmployeeActiveUnits}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">פריטים משוייכים</div>
+                        <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{selectedEmployeeActiveUnits}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleReturnAllAssigned}
+                        disabled={selectedEmployeeActiveUnits === 0 || isSyncingAssignments}
+                        className="rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        זכה הכל
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -984,6 +1085,31 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAssignmentViewMode("assigned_items")}
+                    className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                      assignmentViewMode === "assigned_items"
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    פריטים משוייכים
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignmentViewMode("add_items")}
+                    className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                      assignmentViewMode === "add_items"
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    הוסף פריטים
+                  </button>
+                </div>
+
                 {selectedEmployeeWarning && (
                   <div
                     className={`rounded-lg border px-4 py-3 text-sm ${
@@ -997,17 +1123,43 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   </div>
                 )}
 
-                <DataTable
-                  columns={assignmentColumns}
-                  data={assignmentRows}
-                  rowKey={(equipment) => equipment.id}
-                  emptyMessage={
-                    employeeEquipmentSearch.trim()
-                      ? "לא נמצאו פריטי ציוד עבור החיפוש הזה"
-                      : "אין פריטי ציוד להצגה"
-                  }
-                  minWidthClassName="min-w-[64rem]"
-                />
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">חיפוש פריט</label>
+                    <SearchInput
+                      value={employeeEquipmentSearch}
+                      onChange={setEmployeeEquipmentSearch}
+                      placeholder="חיפוש פריט לפי שם..."
+                      className="w-full"
+                    />
+                  </div>
+
+                  {assignmentViewMode === "assigned_items" ? (
+                    <DataTable
+                      columns={assignedColumns}
+                      data={assignedItemRows}
+                      rowKey={(equipment) => equipment.id}
+                      emptyMessage={
+                        employeeEquipmentSearch.trim()
+                          ? "לא נמצאו פריטים משוייכים עבור החיפוש הזה"
+                          : "אין כרגע פריטים משוייכים לחותם הזה"
+                      }
+                      minWidthClassName="min-w-[56rem]"
+                    />
+                  ) : (
+                    <DataTable
+                      columns={assignmentColumns}
+                      data={assignmentRows}
+                      rowKey={(equipment) => equipment.id}
+                      emptyMessage={
+                        employeeEquipmentSearch.trim()
+                          ? "לא נמצאו פריטי ציוד עבור החיפוש הזה"
+                          : "אין פריטי ציוד להצגה"
+                      }
+                      minWidthClassName="min-w-[64rem]"
+                    />
+                  )}
+                </div>
 
                 {assignmentError && (
                   <p className="text-sm text-status-danger-text">{assignmentError}</p>
@@ -1160,6 +1312,74 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             >
               ביטול
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!editingAssignedEquipment}
+        onClose={closeAssignedQuantityModal}
+        title={`שנה כמות — ${editingAssignedEquipment?.name || ""}`}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-muted/40 px-4 py-3">
+              <div className="text-xs text-muted-foreground">כמות חתומה</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                {editingAssignedEquipment?.currentQuantity ?? 0}
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 px-4 py-3">
+              <div className="text-xs text-muted-foreground">זמין להוספה</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                {editingAssignedEquipment?.available ?? 0}
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 px-4 py-3">
+              <div className="text-xs text-muted-foreground">מקסימום אפשרי</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                {editingAssignedEquipment?.maxTargetQuantity ?? 0}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">כמות חדשה</label>
+            <input
+              type="number"
+              min={0}
+              max={editingAssignedEquipment?.maxTargetQuantity ?? 0}
+              value={assignedQuantityInput}
+              onChange={(event) => setAssignedQuantityInput(event.target.value)}
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={markAssignedItemReturned}
+              className="w-full rounded-md border border-status-danger-text/30 px-4 py-2.5 text-sm font-medium text-status-danger-text transition-colors hover:bg-status-danger-bg sm:w-auto"
+            >
+              הוחזר
+            </button>
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={saveAssignedQuantityChange}
+                className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
+              >
+                שמור כמות
+              </button>
+              <button
+                type="button"
+                onClick={closeAssignedQuantityModal}
+                className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
+              >
+                ביטול
+              </button>
+            </div>
           </div>
         </div>
       </Modal>
