@@ -10,7 +10,7 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { InitialData, EquipmentType, EquipmentLedgerEntry, Employee } from "@/types";
 import { Badge } from "@/components/shared/Badge";
 import { SummaryCard } from "@/components/shared/SummaryCard";
@@ -18,6 +18,7 @@ import { Modal } from "@/components/shared/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { TablePagination } from "@/components/shared/TablePagination";
 import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import {
   calcAvailableQty,
@@ -36,6 +37,26 @@ type EquipmentActionMode = "set_quantity" | "issue_item";
 type EquipmentSection = "issued_items" | "assign_by_name";
 type AssignmentViewMode = "assigned_items" | "add_items";
 type EquipmentTypeWithQty = EquipmentType & { available: number; issued: number };
+type TablePageSize = "all" | "10" | "20" | "30";
+
+const PAGE_SIZE_OPTIONS: Array<{ value: TablePageSize; label: string }> = [
+  { value: "all", label: "הכל" },
+  { value: "10", label: "10" },
+  { value: "20", label: "20" },
+  { value: "30", label: "30" },
+];
+
+function getTotalPages(totalItems: number, pageSize: TablePageSize): number {
+  if (pageSize === "all") return 1;
+  return Math.max(1, Math.ceil(totalItems / Number(pageSize)));
+}
+
+function paginateRows<T>(rows: T[], currentPage: number, pageSize: TablePageSize): T[] {
+  if (pageSize === "all") return rows;
+  const pageSizeNumber = Number(pageSize);
+  const startIndex = (currentPage - 1) * pageSizeNumber;
+  return rows.slice(startIndex, startIndex + pageSizeNumber);
+}
 
 function isLedgerAssignedToEmployee(entry: EquipmentLedgerEntry, employee: Employee): boolean {
   if (entry.status === "returned") return false;
@@ -130,9 +151,16 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [equipmentTypeSearch, setEquipmentTypeSearch] = useState("");
+  const [equipmentTypePage, setEquipmentTypePage] = useState(1);
+  const [equipmentTypePageSize, setEquipmentTypePageSize] = useState<TablePageSize>("10");
   const [issuedToSearch, setIssuedToSearch] = useState("");
+  const [issuedItemsPage, setIssuedItemsPage] = useState(1);
+  const [issuedItemsPageSize, setIssuedItemsPageSize] = useState<TablePageSize>("10");
   const [assignmentSignerName, setAssignmentSignerName] = useState("");
   const [employeeEquipmentSearch, setEmployeeEquipmentSearch] = useState("");
+  const [assignmentTablePage, setAssignmentTablePage] = useState(1);
+  const [assignmentTablePageSize, setAssignmentTablePageSize] = useState<TablePageSize>("10");
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, number>>({});
   const [assignmentViewMode, setAssignmentViewMode] = useState<AssignmentViewMode>("assigned_items");
   const [assignmentDetails, setAssignmentDetails] = useState({
@@ -147,6 +175,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [assignedQuantityInput, setAssignedQuantityInput] = useState("");
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [isSyncingAssignments, setIsSyncingAssignments] = useState(false);
+  const [showActionHolders, setShowActionHolders] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
     totalQuantity: "0",
@@ -161,6 +190,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     department: "",
     expectedReturnDate: "",
   });
+  const signerManagementRef = useRef<HTMLElement | null>(null);
 
   const sortedEmployees = useMemo(
     () => [...employees].sort((a, b) => a.name.localeCompare(b.name, "he")),
@@ -189,6 +219,22 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     })),
   [equipmentTypes, equipmentLedger]);
 
+  const filteredTypesWithQty = useMemo(() => {
+    const normalizedSearch = equipmentTypeSearch.trim();
+    if (!normalizedSearch) return typesWithQty;
+    return typesWithQty.filter((equipment) => equipment.name.includes(normalizedSearch));
+  }, [equipmentTypeSearch, typesWithQty]);
+
+  const equipmentTypeTotalPages = useMemo(
+    () => getTotalPages(filteredTypesWithQty.length, equipmentTypePageSize),
+    [equipmentTypePageSize, filteredTypesWithQty.length]
+  );
+
+  const paginatedTypesWithQty = useMemo(
+    () => paginateRows(filteredTypesWithQty, equipmentTypePage, equipmentTypePageSize),
+    [equipmentTypePage, equipmentTypePageSize, filteredTypesWithQty]
+  );
+
   // ── Ledger rows for selected type ────────────────────────────────
   const activeLedger = useMemo(() => {
     if (!selectedType) return [];
@@ -211,6 +257,16 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       entry.equipmentName.includes(normalizedSearch)
     );
   }, [activeLedger, equipmentLedger, issuedToSearch, selectedType]);
+
+  const issuedItemsTotalPages = useMemo(
+    () => getTotalPages(activeLedgerRows.length, issuedItemsPageSize),
+    [activeLedgerRows.length, issuedItemsPageSize]
+  );
+
+  const paginatedActiveLedgerRows = useMemo(
+    () => paginateRows(activeLedgerRows, issuedItemsPage, issuedItemsPageSize),
+    [activeLedgerRows, issuedItemsPage, issuedItemsPageSize]
+  );
 
   const normalizedAssignmentSignerName = assignmentSignerName.trim();
   const matchedSignerEmployee = useMemo(
@@ -304,6 +360,41 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name, "he"));
   }, [equipmentLedger]);
 
+  const actionItemHolders = useMemo(() => {
+    if (!actionItem) return [];
+
+    const groups = new Map<string, {
+      key: string;
+      name: string;
+      department: string;
+      assignedUnits: number;
+    }>();
+
+    equipmentLedger
+      .filter((entry) => entry.status !== "returned" && entry.equipmentId === actionItem.id)
+      .forEach((entry) => {
+        const key = entry.employeeId ? `employee:${entry.employeeId}` : `name:${entry.issuedTo}`;
+        const current = groups.get(key);
+
+        if (current) {
+          current.assignedUnits += entry.quantity;
+          if (!current.department && entry.department) {
+            current.department = entry.department;
+          }
+          return;
+        }
+
+        groups.set(key, {
+          key,
+          name: entry.issuedTo,
+          department: entry.department,
+          assignedUnits: entry.quantity,
+        });
+      });
+
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }, [actionItem, equipmentLedger]);
+
   useEffect(() => {
     if (!normalizedAssignmentSignerName) {
       setAssignmentDraft({});
@@ -346,6 +437,30 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     matchedSignerEmployee,
   ]);
 
+  useEffect(() => {
+    setEquipmentTypePage(1);
+  }, [equipmentTypeSearch]);
+
+  useEffect(() => {
+    setIssuedItemsPage(1);
+  }, [issuedToSearch, selectedType?.id]);
+
+  useEffect(() => {
+    setAssignmentTablePage(1);
+  }, [assignmentSignerName, assignmentViewMode, employeeEquipmentSearch]);
+
+  useEffect(() => {
+    setEquipmentTypePage((currentPage) => Math.min(currentPage, equipmentTypeTotalPages));
+  }, [equipmentTypeTotalPages]);
+
+  useEffect(() => {
+    setIssuedItemsPage((currentPage) => Math.min(currentPage, issuedItemsTotalPages));
+  }, [issuedItemsTotalPages]);
+
+  useEffect(() => {
+    setAssignmentTablePage((currentPage) => Math.min(currentPage, assignmentTableTotalPages));
+  }, [assignmentTableTotalPages]);
+
   const allAssignmentRows = useMemo(
     () =>
       typesWithQty.map((equipment) => {
@@ -384,6 +499,25 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     });
   }, [allAssignmentRows, employeeEquipmentSearch]);
 
+  const activeAssignmentRows = assignmentViewMode === "assigned_items"
+    ? assignedItemRows
+    : assignmentRows;
+
+  const assignmentTableTotalPages = useMemo(
+    () => getTotalPages(activeAssignmentRows.length, assignmentTablePageSize),
+    [activeAssignmentRows.length, assignmentTablePageSize]
+  );
+
+  const paginatedAssignmentRows = useMemo(
+    () => paginateRows(assignmentRows, assignmentTablePage, assignmentTablePageSize),
+    [assignmentRows, assignmentTablePage, assignmentTablePageSize]
+  );
+
+  const paginatedAssignedItemRows = useMemo(
+    () => paginateRows(assignedItemRows, assignmentTablePage, assignmentTablePageSize),
+    [assignedItemRows, assignmentTablePage, assignmentTablePageSize]
+  );
+
   const editingAssignedEquipment = useMemo(
     () => allAssignmentRows.find((equipment) => equipment.id === editingAssignedEquipmentId) ?? null,
     [allAssignmentRows, editingAssignedEquipmentId]
@@ -400,6 +534,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const resetActionModal = () => {
     setActionItem(null);
     setActionMode("set_quantity");
+    setShowActionHolders(false);
     setActionError(null);
     setStockForm({ quantity: "" });
     setIssueForm({ quantity: 1, issuedTo: "", employeeId: "", department: "", expectedReturnDate: "" });
@@ -440,6 +575,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
   const openActionModal = (item: EquipmentTypeWithQty) => {
     setActionItem(item);
     setActionMode("set_quantity");
+    setShowActionHolders(false);
     setActionError(null);
     setStockForm({ quantity: String(item.totalQuantity) });
     setIssueForm({
@@ -448,6 +584,21 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       employeeId: "",
       department: departments[0]?.name ?? "",
       expectedReturnDate: "",
+    });
+  };
+
+  const openSignerManagementFromItem = (signerName: string, equipmentName?: string) => {
+    setActiveSection("assign_by_name");
+    setAssignmentSignerName(signerName);
+    setAssignmentViewMode("assigned_items");
+    setEmployeeEquipmentSearch(equipmentName ?? "");
+    resetActionModal();
+
+    requestAnimationFrame(() => {
+      signerManagementRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     });
   };
 
@@ -824,58 +975,93 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
       </div>
 
       {/* Equipment Types table */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          מלאי לפי סוג
-        </h3>
-        <div className="overflow-hidden rounded-lg bg-card shadow-card">
-          <div className="overflow-x-auto">
-          <table className="min-w-[38rem] w-full text-sm" dir="rtl">
-            <thead>
-              <tr className="bg-muted border-b border-border">
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">שם פריט</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">סה״כ</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">זמין</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">מושאל</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground sm:px-4">פעולות</th>
-              </tr>
-            </thead>
-            <tbody>
-              {typesWithQty.map((t) => (
-                <tr
-                  key={t.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
-                  onClick={() => setSelectedType(t.id === selectedType?.id ? null : t)}
-                >
-                  <td className="px-3 py-3 font-semibold sm:px-4">{t.name}</td>
-                  <td className="px-3 py-3 tabular-nums sm:px-4">{t.totalQuantity}</td>
-                  <td className="px-3 py-3 tabular-nums sm:px-4">
-                    <span className={t.available === 0 ? "text-status-danger-text font-bold" : "text-status-success-text font-bold"}>
-                      {t.available}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 tabular-nums sm:px-4">{t.issued}</td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openActionModal(t);
-                      }}
-                      className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80"
-                    >
-                      <ArrowRightLeft size={14} />
-                      פעולה
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              מלאי לפי סוג
+            </h3>
+            {equipmentTypeSearch.trim() && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                נמצאו {filteredTypesWithQty.length} פריטי ציוד עבור "{equipmentTypeSearch.trim()}"
+              </p>
+            )}
           </div>
+
+          <SearchInput
+            value={equipmentTypeSearch}
+            onChange={setEquipmentTypeSearch}
+            placeholder="חיפוש פריט לפי שם..."
+            className="w-full lg:w-80"
+          />
+        </div>
+
+        <div className="space-y-0">
+          <DataTable
+            columns={[
+              {
+                key: "name",
+                header: "שם פריט",
+                render: (equipment: EquipmentTypeWithQty) => (
+                  <span className="font-semibold">{equipment.name}</span>
+                ),
+              },
+              { key: "totalQuantity", header: "סה״כ" },
+              {
+                key: "available",
+                header: "זמין",
+                render: (equipment: EquipmentTypeWithQty) => (
+                  <span className={equipment.available === 0 ? "font-bold text-status-danger-text" : "font-bold text-status-success-text"}>
+                    {equipment.available}
+                  </span>
+                ),
+              },
+              { key: "issued", header: "מושאל" },
+              {
+                key: "actions",
+                header: "פעולות",
+                render: (equipment: EquipmentTypeWithQty) => (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openActionModal(equipment);
+                    }}
+                    className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80"
+                  >
+                    <ArrowRightLeft size={14} />
+                    פעולה
+                  </button>
+                ),
+              },
+            ]}
+            data={paginatedTypesWithQty}
+            rowKey={(equipment) => equipment.id}
+            onRowClick={(equipment) => setSelectedType(equipment.id === selectedType?.id ? null : equipment)}
+            emptyMessage={
+              equipmentTypeSearch.trim()
+                ? "לא נמצאו פריטי ציוד עבור החיפוש הזה"
+                : "אין פריטי ציוד להצגה"
+            }
+            minWidthClassName="min-w-[38rem]"
+            className="rounded-b-none border border-border shadow-none"
+          />
+          <TablePagination
+            currentPage={equipmentTypePage}
+            totalPages={equipmentTypeTotalPages}
+            totalItems={filteredTypesWithQty.length}
+            pageSize={equipmentTypePageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageChange={setEquipmentTypePage}
+            onPageSizeChange={(pageSize) => {
+              setEquipmentTypePageSize(pageSize as TablePageSize);
+              setEquipmentTypePage(1);
+            }}
+            itemLabel="פריטים"
+          />
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-4" ref={signerManagementRef}>
         <div className="flex flex-col gap-3 border-b border-border pb-2 xl:flex-row xl:items-end xl:justify-between">
           <div className="flex flex-wrap gap-2">
             <button
@@ -948,7 +1134,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
             </div>
             <DataTable
               columns={ledgerColumns}
-              data={activeLedgerRows}
+              data={paginatedActiveLedgerRows}
               rowKey={(l) => l.id}
               emptyMessage={
                 issuedToSearch.trim()
@@ -956,6 +1142,20 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   : "אין פריטים מושאלים"
               }
               minWidthClassName="min-w-[56rem]"
+              className="rounded-b-none border border-border shadow-none"
+            />
+            <TablePagination
+              currentPage={issuedItemsPage}
+              totalPages={issuedItemsTotalPages}
+              totalItems={activeLedgerRows.length}
+              pageSize={issuedItemsPageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={setIssuedItemsPage}
+              onPageSizeChange={(pageSize) => {
+                setIssuedItemsPageSize(pageSize as TablePageSize);
+                setIssuedItemsPage(1);
+              }}
+              itemLabel="רשומות"
             />
           </>
         ) : (
@@ -1137,7 +1337,7 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                   {assignmentViewMode === "assigned_items" ? (
                     <DataTable
                       columns={assignedColumns}
-                      data={assignedItemRows}
+                      data={paginatedAssignedItemRows}
                       rowKey={(equipment) => equipment.id}
                       emptyMessage={
                         employeeEquipmentSearch.trim()
@@ -1145,11 +1345,12 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                           : "אין כרגע פריטים משוייכים לחותם הזה"
                       }
                       minWidthClassName="min-w-[56rem]"
+                      className="rounded-b-none border border-border shadow-none"
                     />
                   ) : (
                     <DataTable
                       columns={assignmentColumns}
-                      data={assignmentRows}
+                      data={paginatedAssignmentRows}
                       rowKey={(equipment) => equipment.id}
                       emptyMessage={
                         employeeEquipmentSearch.trim()
@@ -1157,8 +1358,22 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
                           : "אין פריטי ציוד להצגה"
                       }
                       minWidthClassName="min-w-[64rem]"
+                      className="rounded-b-none border border-border shadow-none"
                     />
                   )}
+                  <TablePagination
+                    currentPage={assignmentTablePage}
+                    totalPages={assignmentTableTotalPages}
+                    totalItems={activeAssignmentRows.length}
+                    pageSize={assignmentTablePageSize}
+                    pageSizeOptions={PAGE_SIZE_OPTIONS}
+                    onPageChange={setAssignmentTablePage}
+                    onPageSizeChange={(pageSize) => {
+                      setAssignmentTablePageSize(pageSize as TablePageSize);
+                      setAssignmentTablePage(1);
+                    }}
+                    itemLabel={assignmentViewMode === "assigned_items" ? "פריטים משוייכים" : "פריטי ציוד"}
+                  />
                 </div>
 
                 {assignmentError && (
@@ -1175,145 +1390,209 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
         onClose={resetActionModal}
         title={`פעולה — ${actionItem?.name}`}
       >
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              onClick={() => {
-                setActionMode("set_quantity");
-                setActionError(null);
-              }}
-              className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                actionMode === "set_quantity"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              הזן כמות חדשה
-            </button>
-            <button
-              onClick={() => {
-                setActionMode("issue_item");
-                setActionError(null);
-              }}
-              className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                actionMode === "issue_item"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              נפק פריט
-            </button>
-          </div>
-
-          {actionMode === "set_quantity" && (
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-lg bg-muted/40 px-4 py-3">
-                  <div className="text-xs text-muted-foreground">כמות כוללת נוכחית</div>
-                  <div className="text-lg font-semibold tabular-nums">{actionItem?.totalQuantity ?? 0}</div>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-4 py-3">
-                  <div className="text-xs text-muted-foreground">מונפק כעת</div>
-                  <div className="text-lg font-semibold tabular-nums">{actionItem?.issued ?? 0}</div>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-4 py-3">
-                  <div className="text-xs text-muted-foreground">זמין כרגע</div>
-                  <div className="text-lg font-semibold tabular-nums">{actionItem?.available ?? 0}</div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">כמות חדשה במלאי</label>
-                <input
-                  type="number"
-                  min={actionItem?.issued ?? 0}
-                  step={1}
-                  value={stockForm.quantity}
-                  onChange={(e) => setStockForm({ quantity: e.target.value })}
-                  className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <p className="text-xs text-muted-foreground">
-                  הכמות נשמרת בקטלוג הציוד הכולל, ולכן לא ניתן לרדת מתחת ל-{actionItem?.issued ?? 0} פריטים שכבר מונפקים.
-                </p>
-              </div>
+        {showActionHolders ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+              בחר חותם כדי לפתוח מיד את מסך "החתמה לפי שם" עבור {actionItem?.name} ולנהל את הכמות או להוסיף לו ציוד נוסף.
             </div>
-          )}
 
-          {actionMode === "issue_item" && (
-            <>
-              <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                זמינים כעת להנפקה: <span className="font-semibold text-foreground tabular-nums">{actionItem?.available ?? 0}</span>
+            {actionItemHolders.length > 0 ? (
+              <div className="space-y-2">
+                {actionItemHolders.map((holder) => (
+                  <button
+                    key={holder.key}
+                    type="button"
+                    onClick={() => openSignerManagementFromItem(holder.name, actionItem?.name)}
+                    className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-3 text-right transition-colors hover:bg-muted"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium text-foreground">{holder.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {holder.department || "ללא מחלקה"}
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums text-foreground">
+                      {holder.assignedUnits}
+                    </span>
+                  </button>
+                ))}
               </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+                אין כרגע חותמים פעילים עבור הפריט הזה.
+              </div>
+            )}
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">כמות</label>
-            <input
-              type="number"
-              min={1}
-              max={actionItem?.available || 1}
-              value={issueForm.quantity}
-              onChange={(e) => setIssueForm({ ...issueForm, quantity: Number(e.target.value) })}
-              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setShowActionHolders(false)}
+                className="w-full rounded-md border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto"
+              >
+                חזרה לפעולות
+              </button>
+              <button
+                type="button"
+                onClick={resetActionModal}
+                className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
+              >
+                סגירה
+              </button>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">מושאל ל</label>
-            <input
-              type="text"
-              value={issueForm.issuedTo}
-              onChange={(e) => setIssueForm({ ...issueForm, issuedTo: e.target.value })}
-              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              dir="rtl"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">מחלקה</label>
-            <select
-              value={issueForm.department}
-              onChange={(e) => setIssueForm({ ...issueForm, department: e.target.value })}
-              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              dir="rtl"
-            >
-              <option value="">בחר מחלקה</option>
-              {departments.map((d) => <option key={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">תאריך החזרה צפוי (אופציונלי)</label>
-            <input
-              type="date"
-              value={issueForm.expectedReturnDate}
-              onChange={(e) => setIssueForm({ ...issueForm, expectedReturnDate: e.target.value })}
-              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-            </>
-          )}
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => {
+                  setActionMode("set_quantity");
+                  setActionError(null);
+                }}
+                className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                  actionMode === "set_quantity"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                הזן כמות חדשה
+              </button>
+              <button
+                onClick={() => {
+                  setActionMode("issue_item");
+                  setActionError(null);
+                }}
+                className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                  actionMode === "issue_item"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                נפק פריט
+              </button>
+            </div>
 
-          {actionError && (
-            <p className="text-sm text-status-danger-text">{actionError}</p>
-          )}
+            {actionMode === "set_quantity" && (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">כמות כוללת נוכחית</div>
+                    <div className="text-lg font-semibold tabular-nums">{actionItem?.totalQuantity ?? 0}</div>
+                  </div>
+                  {actionItem && actionItem.issued > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowActionHolders(true)}
+                      className="rounded-lg bg-muted/40 px-4 py-3 text-right transition-colors hover:bg-muted"
+                    >
+                      <div className="text-xs text-muted-foreground">מונפק כעת</div>
+                      <div className="text-lg font-semibold tabular-nums text-primary">{actionItem.issued}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">לחץ לצפייה בחתומים הפעילים</div>
+                    </button>
+                  ) : (
+                    <div className="rounded-lg bg-muted/40 px-4 py-3">
+                      <div className="text-xs text-muted-foreground">מונפק כעת</div>
+                      <div className="text-lg font-semibold tabular-nums">{actionItem?.issued ?? 0}</div>
+                    </div>
+                  )}
+                  <div className="rounded-lg bg-muted/40 px-4 py-3">
+                    <div className="text-xs text-muted-foreground">זמין כרגע</div>
+                    <div className="text-lg font-semibold tabular-nums">{actionItem?.available ?? 0}</div>
+                  </div>
+                </div>
 
-          <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
-            <button
-              onClick={handleEquipmentAction}
-              disabled={isSubmittingAction}
-              className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
-            >
-              {isSubmittingAction
-                ? "שומר..."
-                : actionMode === "set_quantity"
-                  ? "שמור כמות"
-                  : "אשר הנפקה"}
-            </button>
-            <button
-              onClick={resetActionModal}
-              className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
-            >
-              ביטול
-            </button>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium">כמות חדשה במלאי</label>
+                  <input
+                    type="number"
+                    min={actionItem?.issued ?? 0}
+                    step={1}
+                    value={stockForm.quantity}
+                    onChange={(e) => setStockForm({ quantity: e.target.value })}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    הכמות נשמרת בקטלוג הציוד הכולל, ולכן לא ניתן לרדת מתחת ל-{actionItem?.issued ?? 0} פריטים שכבר מונפקים.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {actionMode === "issue_item" && (
+              <>
+                <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                  זמינים כעת להנפקה: <span className="font-semibold text-foreground tabular-nums">{actionItem?.available ?? 0}</span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium">כמות</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={actionItem?.available || 1}
+                    value={issueForm.quantity}
+                    onChange={(e) => setIssueForm({ ...issueForm, quantity: Number(e.target.value) })}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium">מושאל ל</label>
+                  <input
+                    type="text"
+                    value={issueForm.issuedTo}
+                    onChange={(e) => setIssueForm({ ...issueForm, issuedTo: e.target.value })}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    dir="rtl"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium">מחלקה</label>
+                  <select
+                    value={issueForm.department}
+                    onChange={(e) => setIssueForm({ ...issueForm, department: e.target.value })}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    dir="rtl"
+                  >
+                    <option value="">בחר מחלקה</option>
+                    {departments.map((d) => <option key={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium">תאריך החזרה צפוי (אופציונלי)</label>
+                  <input
+                    type="date"
+                    value={issueForm.expectedReturnDate}
+                    onChange={(e) => setIssueForm({ ...issueForm, expectedReturnDate: e.target.value })}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </>
+            )}
+
+            {actionError && (
+              <p className="text-sm text-status-danger-text">{actionError}</p>
+            )}
+
+            <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                onClick={handleEquipmentAction}
+                disabled={isSubmittingAction}
+                className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
+              >
+                {isSubmittingAction
+                  ? "שומר..."
+                  : actionMode === "set_quantity"
+                    ? "שמור כמות"
+                    : "אשר הנפקה"}
+              </button>
+              <button
+                onClick={resetActionModal}
+                className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
+              >
+                ביטול
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
 
       <Modal

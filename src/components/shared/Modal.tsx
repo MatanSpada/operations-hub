@@ -5,6 +5,7 @@
  */
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +25,9 @@ export const Modal: React.FC<ModalProps> = ({
   width = "max-w-lg",
 }) => {
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-4"
       dir="rtl"
@@ -55,6 +57,7 @@ export const Modal: React.FC<ModalProps> = ({
         {/* Body */}
         <div className="max-h-[calc(90vh-4.5rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
