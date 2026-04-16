@@ -457,10 +457,6 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     setIssuedItemsPage((currentPage) => Math.min(currentPage, issuedItemsTotalPages));
   }, [issuedItemsTotalPages]);
 
-  useEffect(() => {
-    setAssignmentTablePage((currentPage) => Math.min(currentPage, assignmentTableTotalPages));
-  }, [assignmentTableTotalPages]);
-
   const allAssignmentRows = useMemo(
     () =>
       typesWithQty.map((equipment) => {
@@ -517,6 +513,10 @@ export const EquipmentPage: React.FC<Props> = ({ data, onRefresh }) => {
     () => paginateRows(assignedItemRows, assignmentTablePage, assignmentTablePageSize),
     [assignedItemRows, assignmentTablePage, assignmentTablePageSize]
   );
+
+  useEffect(() => {
+    setAssignmentTablePage((currentPage) => Math.min(currentPage, assignmentTableTotalPages));
+  }, [assignmentTableTotalPages]);
 
   const editingAssignedEquipment = useMemo(
     () => allAssignmentRows.find((equipment) => equipment.id === editingAssignedEquipmentId) ?? null,
