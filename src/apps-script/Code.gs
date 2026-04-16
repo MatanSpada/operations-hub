@@ -1252,20 +1252,28 @@ function resolveEquipmentEmployee_(payload) {
   return getEmployeeByName_(payload.issuedTo);
 }
 
+function matchesActiveEquipmentSigner_(row, employeeId, employeeName) {
+  const normalizedEmployeeId = String(employeeId || "").trim();
+  const normalizedRowEmployeeId = String(row.EmployeeID || "").trim();
+  const normalizedEmployeeName = String(employeeName || "").trim();
+  const normalizedIssuedTo = String(row.IssuedTo || "").trim();
+
+  if (String(row.Status) === "returned") {
+    return false;
+  }
+
+  if (normalizedEmployeeId) {
+    return normalizedRowEmployeeId === normalizedEmployeeId;
+  }
+
+  return !normalizedRowEmployeeId && normalizedIssuedTo === normalizedEmployeeName;
+}
+
 function getActiveEquipmentRowsForEmployee_(employeeId, employeeName) {
   const rows = getRows_(SHEETS.EQUIPMENT_LEDGER);
-  const normalizedName = String(employeeName || "").trim();
 
   return rows.filter(function (row) {
-    if (String(row.Status) === "returned") {
-      return false;
-    }
-
-    if (employeeId && String(row.EmployeeID || "").trim() === String(employeeId)) {
-      return true;
-    }
-
-    return !String(row.EmployeeID || "").trim() && String(row.IssuedTo || "").trim() === normalizedName;
+    return matchesActiveEquipmentSigner_(row, employeeId, employeeName);
   });
 }
 
@@ -1462,19 +1470,15 @@ function syncActiveEquipmentLoanMetadataForEmployee_(employeeId, employeeName, n
   const expectedReturnDateIndex = headers.indexOf("ExpectedReturnDate");
 
   for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
-    const status = String(values[rowIndex][statusIndex] || "");
-    const rowEmployeeId = employeeIdIndex === -1 ? "" : String(values[rowIndex][employeeIdIndex] || "").trim();
-    const issuedTo = issuedToIndex === -1 ? "" : String(values[rowIndex][issuedToIndex] || "").trim();
-
-    if (status === "returned") {
-      continue;
-    }
-
-    const matchesEmployee =
-      rowEmployeeId === String(employeeId) ||
-      (!rowEmployeeId && issuedTo === String(employeeName).trim());
-
-    if (!matchesEmployee) {
+    if (!matchesActiveEquipmentSigner_(
+      {
+        Status: statusIndex === -1 ? "" : values[rowIndex][statusIndex],
+        EmployeeID: employeeIdIndex === -1 ? "" : values[rowIndex][employeeIdIndex],
+        IssuedTo: issuedToIndex === -1 ? "" : values[rowIndex][issuedToIndex],
+      },
+      employeeId,
+      employeeName
+    )) {
       continue;
     }
 
@@ -1499,19 +1503,15 @@ function syncActiveEquipmentLoansForEmployee_(employeeId, previousName, nextName
   const departmentIndex = headers.indexOf("Department");
 
   for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
-    const status = String(values[rowIndex][statusIndex] || "");
-    const rowEmployeeId = employeeIdIndex === -1 ? "" : String(values[rowIndex][employeeIdIndex] || "").trim();
-    const issuedTo = issuedToIndex === -1 ? "" : String(values[rowIndex][issuedToIndex] || "").trim();
-
-    if (status === "returned") {
-      continue;
-    }
-
-    const matchesEmployee =
-      rowEmployeeId === String(employeeId) ||
-      (!rowEmployeeId && issuedTo === String(previousName).trim());
-
-    if (!matchesEmployee) {
+    if (!matchesActiveEquipmentSigner_(
+      {
+        Status: statusIndex === -1 ? "" : values[rowIndex][statusIndex],
+        EmployeeID: employeeIdIndex === -1 ? "" : values[rowIndex][employeeIdIndex],
+        IssuedTo: issuedToIndex === -1 ? "" : values[rowIndex][issuedToIndex],
+      },
+      employeeId,
+      previousName
+    )) {
       continue;
     }
 
