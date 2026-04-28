@@ -265,6 +265,12 @@ export interface TabularExportDefinition {
   worksheetName?: string;
 }
 
+export interface PdfPagePlan {
+  rowStart: number;
+  rowEndExclusive: number;
+  includeTitle: boolean;
+}
+
 function buildCrc32Table(): Uint32Array {
   const table = new Uint32Array(256);
   for (let index = 0; index < 256; index += 1) {
@@ -385,9 +391,102 @@ async function createPdfBlob(rows: string[][], title: string): Promise<Blob> {
 
   const exportedRows = withSerialColumn(rows);
   const landscape = exportedRows[0]?.length > 5;
-  const container = document.createElement("div");
+  const pdf = new jsPDF({
+    orientation: landscape ? "landscape" : "portrait",
+    unit: "pt",
+    format: "a4",
+    compress: true,
+  });
+  const margin = 18;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imageWidth = pageWidth - margin * 2;
   const pageWidthPx = landscape ? 1122 : 794;
+  const pageContentHeightPx = ((pageHeight - margin * 2) * pageWidthPx) / imageWidth;
 
+  const measurementStage = document.createElement("div");
+  applyPdfPageContainerStyles(measurementStage, pageWidthPx);
+
+  const titleBlock = createPdfTitleBlock(title, Math.max(0, exportedRows.length - 1), false);
+  const measurementTable = createPdfTable(exportedRows[0], exportedRows.slice(1));
+  measurementStage.appendChild(titleBlock);
+  measurementStage.appendChild(measurementTable);
+  document.body.appendChild(measurementStage);
+
+  await waitForPdfLayout();
+
+  const titleHeight = titleBlock.getBoundingClientRect().height;
+  const headerRow = measurementTable.querySelector("thead tr");
+  if (!headerRow) {
+    document.body.removeChild(measurementStage);
+    throw new Error("Failed to measure PDF table header");
+  }
+
+  const headerHeight = headerRow.getBoundingClientRect().height;
+  const dataRowHeights = Array.from(measurementTable.querySelectorAll("tbody tr")).map((row) =>
+    row.getBoundingClientRect().height
+  );
+
+  document.body.removeChild(measurementStage);
+
+  const pagePlans = buildPdfPagePlans(
+    dataRowHeights,
+    headerHeight,
+    titleHeight,
+    pageContentHeightPx
+  );
+
+  for (const [pageIndex, plan] of pagePlans.entries()) {
+    const pageContainer = document.createElement("div");
+    applyPdfPageContainerStyles(pageContainer, pageWidthPx);
+    if (plan.includeTitle) {
+      pageContainer.appendChild(
+        createPdfTitleBlock(title, Math.max(0, exportedRows.length - 1), pageIndex > 0)
+      );
+    } else {
+      pageContainer.appendChild(createPdfContinuationLabel(pageIndex + 1, pagePlans.length));
+    }
+
+    pageContainer.appendChild(
+      createPdfTable(
+        exportedRows[0],
+        exportedRows.slice(1).slice(plan.rowStart, plan.rowEndExclusive)
+      )
+    );
+
+    document.body.appendChild(pageContainer);
+    await waitForPdfLayout();
+
+    const canvas = await html2canvas(pageContainer, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    document.body.removeChild(pageContainer);
+
+    if (pageIndex > 0) {
+      pdf.addPage();
+    }
+
+    const renderedHeight = (canvas.height * imageWidth) / canvas.width;
+    pdf.addImage(
+      canvas.toDataURL("image/png"),
+      "PNG",
+      margin,
+      margin,
+      imageWidth,
+      Math.min(renderedHeight, pageHeight - margin * 2),
+      undefined,
+      "FAST"
+    );
+  }
+
+  return pdf.output("blob");
+}
+
+function applyPdfPageContainerStyles(container: HTMLDivElement, pageWidthPx: number): void {
   container.dir = "rtl";
   container.lang = "he";
   container.style.position = "fixed";
@@ -399,21 +498,42 @@ async function createPdfBlob(rows: string[][], title: string): Promise<Blob> {
   container.style.padding = "32px";
   container.style.boxSizing = "border-box";
   container.style.fontFamily = "Arial, 'Noto Sans Hebrew', sans-serif";
+}
+
+function createPdfTitleBlock(title: string, rowCount: number, continuation: boolean): HTMLDivElement {
+  const wrapper = document.createElement("div");
+  wrapper.style.marginBottom = "18px";
 
   const titleElement = document.createElement("div");
-  titleElement.textContent = title;
+  titleElement.textContent = continuation ? `${title} — המשך` : title;
   titleElement.style.fontSize = "28px";
   titleElement.style.fontWeight = "700";
   titleElement.style.marginBottom = "20px";
   titleElement.style.textAlign = "right";
 
   const subtitleElement = document.createElement("div");
-  subtitleElement.textContent = `סה״כ שורות: ${Math.max(0, exportedRows.length - 1)}`;
+  subtitleElement.textContent = `סה״כ שורות: ${rowCount}`;
   subtitleElement.style.fontSize = "14px";
   subtitleElement.style.color = "#4b5563";
-  subtitleElement.style.marginBottom = "18px";
   subtitleElement.style.textAlign = "right";
 
+  wrapper.appendChild(titleElement);
+  wrapper.appendChild(subtitleElement);
+  return wrapper;
+}
+
+function createPdfContinuationLabel(pageNumber: number, pageCount: number): HTMLDivElement {
+  const label = document.createElement("div");
+  label.textContent = `המשך טבלה • עמוד ${pageNumber} מתוך ${pageCount}`;
+  label.style.fontSize = "13px";
+  label.style.fontWeight = "600";
+  label.style.color = "#4b5563";
+  label.style.textAlign = "right";
+  label.style.marginBottom = "14px";
+  return label;
+}
+
+function createPdfTable(headerRow: string[], bodyRows: string[][]): HTMLTableElement {
   const table = document.createElement("table");
   table.dir = "rtl";
   table.style.width = "100%";
@@ -421,112 +541,97 @@ async function createPdfBlob(rows: string[][], title: string): Promise<Blob> {
   table.style.tableLayout = "fixed";
   table.style.fontSize = "14px";
 
-  exportedRows.forEach((row, rowIndex) => {
+  const thead = document.createElement("thead");
+  const headerTr = document.createElement("tr");
+  headerRow.forEach((cellValue) => {
+    headerTr.appendChild(createPdfTableCell("th", cellValue, true));
+  });
+  thead.appendChild(headerTr);
+
+  const tbody = document.createElement("tbody");
+  bodyRows.forEach((row) => {
     const rowElement = document.createElement("tr");
-
     row.forEach((cellValue) => {
-      const cell = document.createElement(rowIndex === 0 ? "th" : "td");
-      cell.textContent = String(cellValue ?? "");
-      cell.dir = "rtl";
-      cell.style.border = "1px solid #d1d5db";
-      cell.style.padding = "10px 12px";
-      cell.style.textAlign = "right";
-      cell.style.verticalAlign = "top";
-      cell.style.wordBreak = "break-word";
-      cell.style.whiteSpace = "pre-wrap";
-      cell.style.unicodeBidi = "plaintext";
-
-      if (rowIndex === 0) {
-        cell.style.background = "#f3f4f6";
-        cell.style.fontWeight = "700";
-      }
-
-      rowElement.appendChild(cell);
+      rowElement.appendChild(createPdfTableCell("td", cellValue, false));
     });
-
-    table.appendChild(rowElement);
+    tbody.appendChild(rowElement);
   });
 
-  container.appendChild(titleElement);
-  container.appendChild(subtitleElement);
-  container.appendChild(table);
-  document.body.appendChild(container);
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
+}
 
+function createPdfTableCell(tag: "th" | "td", value: string, isHeader: boolean): HTMLTableCellElement {
+  const cell = document.createElement(tag);
+  cell.textContent = String(value ?? "");
+  cell.dir = "rtl";
+  cell.style.border = "1px solid #d1d5db";
+  cell.style.padding = "10px 12px";
+  cell.style.textAlign = "right";
+  cell.style.verticalAlign = "top";
+  cell.style.wordBreak = "break-word";
+  cell.style.whiteSpace = "pre-wrap";
+  cell.style.unicodeBidi = "plaintext";
+
+  if (isHeader) {
+    cell.style.background = "#f3f4f6";
+    cell.style.fontWeight = "700";
+  }
+
+  return cell;
+}
+
+async function waitForPdfLayout(): Promise<void> {
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
+}
 
-  const canvas = await html2canvas(container, {
-    backgroundColor: "#ffffff",
-    scale: 2,
-    useCORS: true,
-    logging: false,
-  });
+export function buildPdfPagePlans(
+  dataRowHeights: number[],
+  headerHeight: number,
+  titleHeight: number,
+  pageContentHeight: number
+): PdfPagePlan[] {
+  const pageSafetyPadding = 8;
+  const bodyPageCapacity = pageContentHeight - headerHeight - pageSafetyPadding;
+  const firstPageBodyCapacity = bodyPageCapacity - titleHeight;
 
-  document.body.removeChild(container);
-
-  const pdf = new jsPDF({
-    orientation: landscape ? "landscape" : "portrait",
-    unit: "pt",
-    format: "a4",
-    compress: true,
-  });
-  const margin = 18;
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageWidth = pageWidth - margin * 2;
-  const pxPerPt = canvas.width / imageWidth;
-  const pageContentHeightPx = Math.floor((pageHeight - margin * 2) * pxPerPt);
-
-  let offsetY = 0;
-  let pageIndex = 0;
-
-  while (offsetY < canvas.height) {
-    const sliceHeight = Math.min(pageContentHeightPx, canvas.height - offsetY);
-    const pageCanvas = document.createElement("canvas");
-    pageCanvas.width = canvas.width;
-    pageCanvas.height = sliceHeight;
-
-    const pageContext = pageCanvas.getContext("2d");
-    if (!pageContext) {
-      throw new Error("Failed to create PDF rendering context");
-    }
-
-    pageContext.fillStyle = "#ffffff";
-    pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-    pageContext.drawImage(
-      canvas,
-      0,
-      offsetY,
-      canvas.width,
-      sliceHeight,
-      0,
-      0,
-      canvas.width,
-      sliceHeight
-    );
-
-    if (pageIndex > 0) {
-      pdf.addPage();
-    }
-
-    const renderedHeight = sliceHeight / pxPerPt;
-    pdf.addImage(
-      pageCanvas.toDataURL("image/png"),
-      "PNG",
-      margin,
-      margin,
-      imageWidth,
-      renderedHeight,
-      undefined,
-      "FAST"
-    );
-
-    offsetY += sliceHeight;
-    pageIndex += 1;
+  if (bodyPageCapacity <= 0 || firstPageBodyCapacity <= 0) {
+    throw new Error("PDF page layout is too small for table rendering");
   }
 
-  return pdf.output("blob");
+  const plans: PdfPagePlan[] = [];
+  let currentStart = 0;
+  let currentHeight = 0;
+  let currentCapacity = firstPageBodyCapacity;
+
+  dataRowHeights.forEach((rowHeight, index) => {
+    const currentPageHasRows = index > currentStart;
+    const fitsCurrentPage = currentHeight + rowHeight <= currentCapacity;
+
+    if (!fitsCurrentPage && currentPageHasRows) {
+      plans.push({
+        rowStart: currentStart,
+        rowEndExclusive: index,
+        includeTitle: plans.length === 0,
+      });
+      currentStart = index;
+      currentHeight = 0;
+      currentCapacity = bodyPageCapacity;
+    }
+
+    currentHeight += rowHeight;
+  });
+
+  plans.push({
+    rowStart: currentStart,
+    rowEndExclusive: dataRowHeights.length,
+    includeTitle: plans.length === 0,
+  });
+
+  return plans;
 }
 
 function dosDateTime(date = new Date()): { dosTime: number; dosDate: number } {

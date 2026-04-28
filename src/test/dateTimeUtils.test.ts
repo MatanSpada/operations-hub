@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import {
   buildExportFile,
+  buildPdfPagePlans,
   buildZipBlob,
   combineDateAndTimeToIso,
   computeDurationHours,
@@ -76,5 +77,19 @@ describe("date/time utilities", () => {
     );
     expect(sheetRows[0]).toEqual(["מספר סידורי", "שם", "מחלקה"]);
     expect(sheetRows[1]).toEqual(["1", "דנה", "תפעול"]);
+  });
+
+  it("splits pdf pages only between whole rows", () => {
+    const plans = buildPdfPagePlans(
+      [40, 40, 60, 35, 35],
+      30,
+      70,
+      215
+    );
+
+    expect(plans).toEqual([
+      { rowStart: 0, rowEndExclusive: 2, includeTitle: true },
+      { rowStart: 2, rowEndExclusive: 5, includeTitle: false },
+    ]);
   });
 });
