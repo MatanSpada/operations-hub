@@ -45,7 +45,7 @@ export const ExportFormatModal: React.FC<ExportFormatModalProps> = ({
               <FileSpreadsheet size={16} />
               Excel
             </div>
-            <span className="text-sm text-muted-foreground">קובץ XLSX אמיתי לעבודה ב-Excel</span>
+            <span className="text-sm text-muted-foreground">קובץ XLSX לעבודה ב-Excel</span>
           </button>
         </div>
       </div>
