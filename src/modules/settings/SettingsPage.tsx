@@ -11,15 +11,19 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { EmployeeEditorForm, EmployeeEditorModal } from "@/components/shared/EmployeeEditorModal";
+import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { Modal } from "@/components/shared/Modal";
 import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { Badge } from "@/components/shared/Badge";
 import { api } from "@/api";
 import {
+  ExportFormat,
+  TabularExportDefinition,
+  buildExportFile,
   calcWarehouseStock,
+  downloadGeneratedFile,
   downloadZip,
-  downloadCsv,
   employeeStatusLabel,
   employeeStatusVariant,
   formatDate,
@@ -104,6 +108,20 @@ const SECTION_ORDER: ManagementSection[] = [
   "licenses",
   "exports",
 ];
+
+const EXPORT_TITLE_BY_TARGET: Record<ExportTarget, string> = {
+  employees: "עובדים",
+  departments: "מחלקות",
+  vehicles: "רכבים",
+  vehicleTasks: "משימות רכב",
+  missions: "משימות",
+  equipmentLedger: "רשומת ציוד",
+  foodProducts: "מוצרי מזון",
+  foodTransactions: "תנועות מזון",
+  apartments: "דירות",
+  qualifications: "הכשרות",
+  drivingLicenses: "רישיונות נהיגה",
+};
 
 function formatManagementError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
@@ -212,6 +230,9 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportAllChoiceOpen, setExportAllChoiceOpen] = useState(false);
+  const [singleExportFormatOpen, setSingleExportFormatOpen] = useState(false);
+  const [exportAllFormat, setExportAllFormat] = useState<ExportFormat | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [departmentForm, setDepartmentForm] = useState({ name: "" });
   const [qualificationForm, setQualificationForm] = useState({ name: "" });
   const [licenseForm, setLicenseForm] = useState({ name: "" });
@@ -510,12 +531,20 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     ]
   );
 
-  const exportFiles = useMemo(
+  const exportDefinitionsByTarget = useMemo<Record<ExportTarget, TabularExportDefinition>>(
     () =>
-      (Object.keys(exportRowsByTarget) as ExportTarget[]).map((target) => ({
-        filename: `${target}.csv`,
-        rows: exportRowsByTarget[target],
-      })),
+      (Object.keys(exportRowsByTarget) as ExportTarget[]).reduce(
+        (accumulator, target) => {
+          accumulator[target] = {
+            filenameBase: target,
+            title: EXPORT_TITLE_BY_TARGET[target],
+            worksheetName: EXPORT_TITLE_BY_TARGET[target],
+            rows: exportRowsByTarget[target],
+          };
+          return accumulator;
+        },
+        {} as Record<ExportTarget, TabularExportDefinition>
+      ),
     [exportRowsByTarget]
   );
 
@@ -659,20 +688,54 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     }
   };
 
-  const exportSingleTarget = (target: ExportTarget) => {
-    downloadCsv(`${target}.csv`, exportRowsByTarget[target]);
+  const exportSingleTarget = async (target: ExportTarget, format: ExportFormat) => {
+    setIsExporting(true);
+    try {
+      const file = await buildExportFile(exportDefinitionsByTarget[target], format);
+      downloadGeneratedFile(file);
+      setSingleExportFormatOpen(false);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const exportAllAsSeparateFiles = () => {
-    exportFiles.forEach((file) => {
-      downloadCsv(file.filename, file.rows);
-    });
-    setExportAllChoiceOpen(false);
+  const exportAllAsSeparateFiles = async () => {
+    if (!exportAllFormat) return;
+
+    setIsExporting(true);
+    try {
+      const files = await Promise.all(
+        (Object.keys(exportDefinitionsByTarget) as ExportTarget[]).map((target) =>
+          buildExportFile(exportDefinitionsByTarget[target], exportAllFormat)
+        )
+      );
+      files.forEach((file) => downloadGeneratedFile(file));
+      setExportAllChoiceOpen(false);
+      setExportAllFormat(null);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const exportAllAsZip = () => {
-    downloadZip("operations-hub-exports.zip", exportFiles);
-    setExportAllChoiceOpen(false);
+  const exportAllAsZip = async () => {
+    if (!exportAllFormat) return;
+
+    setIsExporting(true);
+    try {
+      const files = await Promise.all(
+        (Object.keys(exportDefinitionsByTarget) as ExportTarget[]).map((target) =>
+          buildExportFile(exportDefinitionsByTarget[target], exportAllFormat)
+        )
+      );
+      downloadZip(
+        `operations-hub-exports-${exportAllFormat === "excel" ? "excel" : "pdf"}.zip`,
+        files
+      );
+      setExportAllChoiceOpen(false);
+      setExportAllFormat(null);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const saveEmployee = async () => {
@@ -1214,16 +1277,19 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
                 ייצוא כל הטבלאות, טבלה בודדת או אוכלוסיית עובדים מסוננת לפי מחלקה, הכשרה, רישיון וסטטוס.
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-                onClick={() => setExportAllChoiceOpen(true)}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+                onClick={() => {
+                  setExportAllFormat(null);
+                  setExportAllChoiceOpen(true);
+                }}
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
               >
                 <Download size={14} />
                 יצוא כל הטבלאות
               </button>
               <button
-                onClick={() => exportSingleTarget(exportTarget)}
+                onClick={() => setSingleExportFormatOpen(true)}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Download size={14} />
@@ -1430,29 +1496,75 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
       <Modal
         open={exportAllChoiceOpen}
-        onClose={() => setExportAllChoiceOpen(false)}
+        onClose={() => {
+          if (isExporting) return;
+          setExportAllChoiceOpen(false);
+          setExportAllFormat(null);
+        }}
         title="יצוא כל הטבלאות"
       >
         <div className="space-y-4">
           <p className="text-sm leading-6 text-muted-foreground">
-            בחר את אופן הייצוא. בקבצים נפרדים הדפדפן עשוי לבקש אישור למספר הורדות.
+            {!exportAllFormat
+              ? "בחר קודם את פורמט הייצוא."
+              : "בחר את אופן ההורדה. בקבצים נפרדים הדפדפן עשוי לבקש אישור למספר הורדות."}
           </p>
-          <div className="grid grid-cols-1 gap-3">
-            <button
-              onClick={exportAllAsZip}
-              className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
-            >
-              ZIP ({exportFiles.length} קבצים)
-            </button>
-            <button
-              onClick={exportAllAsSeparateFiles}
-              className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
-            >
-              קבצים נפרדים ({exportFiles.length} קבצים)
-            </button>
-          </div>
+          {!exportAllFormat ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                onClick={() => setExportAllFormat("pdf")}
+                className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
+              >
+                PDF
+              </button>
+              <button
+                onClick={() => setExportAllFormat("excel")}
+                className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted"
+              >
+                Excel
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                נבחר פורמט: {exportAllFormat === "pdf" ? "PDF" : "Excel"}
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => void exportAllAsZip()}
+                  disabled={isExporting}
+                  className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                  ZIP ({Object.keys(exportDefinitionsByTarget).length} קבצים)
+                </button>
+                <button
+                  onClick={() => void exportAllAsSeparateFiles()}
+                  disabled={isExporting}
+                  className="rounded-md border border-border px-4 py-3 text-right text-sm font-medium transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                  קבצים נפרדים ({Object.keys(exportDefinitionsByTarget).length} קבצים)
+                </button>
+                <button
+                  onClick={() => setExportAllFormat(null)}
+                  disabled={isExporting}
+                  className="rounded-md px-4 py-2 text-right text-sm font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                  חזרה לבחירת פורמט
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
+
+      <ExportFormatModal
+        open={singleExportFormatOpen}
+        onClose={() => !isExporting && setSingleExportFormatOpen(false)}
+        onSelect={(format) => exportSingleTarget(exportTarget, format)}
+        title="בחירת פורמט לייצוא"
+        description="איזה פורמט לייצא עבור הטבלה או האוכלוסייה המסוננת שנבחרה כעת?"
+        isLoading={isExporting}
+      />
     </div>
   );
 };

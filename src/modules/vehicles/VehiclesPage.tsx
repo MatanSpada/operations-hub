@@ -2,15 +2,17 @@ import React, { useMemo, useState } from "react";
 import { InitialData, Vehicle, VehicleTask } from "@/types";
 import { Badge } from "@/components/shared/Badge";
 import { DataTable } from "@/components/shared/DataTable";
+import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { Modal } from "@/components/shared/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { api } from "@/api";
 import {
+  ExportFormat,
   combineDateAndTimeToIso,
   computeDurationHours,
   computeTaskWorkHours,
-  downloadCsv,
+  downloadTableExport,
   endOfWeekIso,
   formatDate,
   formatDateForInput,
@@ -75,6 +77,8 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     from: startOfWeekIso(),
     to: endOfWeekIso(),
   });
+  const [exportFormatOpen, setExportFormatOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const now = new Date();
   const [missionForm, setMissionForm] = useState<VehicleMissionForm>({
     driver: "",
@@ -234,23 +238,39 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     await onRefresh();
   };
 
-  const exportVehicleReport = () => {
-    downloadCsv("vehicle-missions-report.csv", [
-      ["תאריך", "שעת יציאה", "שעת סיום", "שם הנהג", "רכב", "מיקום", "מטרת משימה", "שעות עבודה", "סוג הרכב", "משימה", "סיכום טיפול"],
-      ...vehicleReportRows.map((row) => [
-        row.date,
-        row.departureTime,
-        row.returnTime,
-        row.driver,
-        row.plate,
-        row.location,
-        row.taskPurpose,
-        row.workHours,
-        row.vehicleType,
-        row.missionType,
-        row.treatmentSummary,
-      ]),
-    ]);
+  const exportRows = [
+    ["תאריך", "שעת יציאה", "שעת סיום", "שם הנהג", "רכב", "מיקום", "מטרת משימה", "שעות עבודה", "סוג הרכב", "משימה", "סיכום טיפול"],
+    ...vehicleReportRows.map((row) => [
+      row.date,
+      row.departureTime,
+      row.returnTime,
+      row.driver,
+      row.plate,
+      row.location,
+      row.taskPurpose,
+      row.workHours,
+      row.vehicleType,
+      row.missionType,
+      row.treatmentSummary,
+    ]),
+  ];
+
+  const exportVehicleReport = async (format: ExportFormat) => {
+    setIsExporting(true);
+    try {
+      await downloadTableExport(
+        {
+          filenameBase: "vehicle-missions-report",
+          title: "דוח משימות רכב",
+          worksheetName: "משימות רכב",
+          rows: exportRows,
+        },
+        format
+      );
+      setExportFormatOpen(false);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const vehicleColumns = [
@@ -425,7 +445,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
               משימות רכב סגורות
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              טבלה אחת מאוחדת עבור דיווח, היסטוריה וייצוא CSV של משימות רכב סגורות
+              טבלה אחת מאוחדת עבור דיווח, היסטוריה וייצוא של משימות רכב סגורות
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -448,11 +468,11 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
               />
             </div>
             <button
-              onClick={exportVehicleReport}
+              onClick={() => setExportFormatOpen(true)}
               className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border px-4 text-sm font-medium transition-colors hover:bg-muted"
             >
               <Download size={14} />
-              יצוא CSV
+              יצוא
             </button>
           </div>
         </div>
@@ -645,6 +665,15 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           </div>
         </div>
       </Modal>
+
+      <ExportFormatModal
+        open={exportFormatOpen}
+        onClose={() => !isExporting && setExportFormatOpen(false)}
+        onSelect={exportVehicleReport}
+        title="בחירת פורמט לייצוא"
+        description="איזה פורמט לייצא עבור משימות הרכב הסגורות בטווח הנוכחי?"
+        isLoading={isExporting}
+      />
     </div>
   );
 };

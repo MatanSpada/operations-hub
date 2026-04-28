@@ -3,13 +3,15 @@ import { api } from "@/api";
 import { DataTable } from "@/components/shared/DataTable";
 import { Badge } from "@/components/shared/Badge";
 import { EmployeeEditorModal, EmployeeEditorForm } from "@/components/shared/EmployeeEditorModal";
+import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { InitialData, Employee } from "@/types";
 import {
   daysRemaining,
-  downloadCsv,
+  ExportFormat,
+  downloadTableExport,
   employeeStatusLabel,
   employeeStatusVariant,
   formatDate,
@@ -53,6 +55,8 @@ export const WorkforcePage: React.FC<Props> = ({ data, onRefresh }) => {
   const [statusFilter, setStatusFilter] = useState("הכל");
   const [editForm, setEditForm] = useState<EmployeeEditForm | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [exportFormatOpen, setExportFormatOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const qualificationNameById = useMemo(
@@ -155,20 +159,36 @@ export const WorkforcePage: React.FC<Props> = ({ data, onRefresh }) => {
     });
   };
 
-  const exportFilteredEmployees = () => {
-    downloadCsv("workforce-reserve.csv", [
-      ["שם", "מחלקה", "תפקיד", "סטטוס", "תחילת מילואים", "סיום מילואים", "הכשרות", "רישיונות נהיגה"],
-      ...filtered.map((employee) => [
-        employee.name,
-        employee.department,
-        employee.role || "",
-        employeeStatusLabel(employee.status),
-        formatDate(employee.reserveStartDate),
-        formatDate(employee.reserveEndDate),
-        employee.qualifications.join(", "),
-        employee.drivingLicenses.join(", "),
-      ]),
-    ]);
+  const exportRows = [
+    ["שם", "מחלקה", "תפקיד", "סטטוס", "תחילת מילואים", "סיום מילואים", "הכשרות", "רישיונות נהיגה"],
+    ...filtered.map((employee) => [
+      employee.name,
+      employee.department,
+      employee.role || "",
+      employeeStatusLabel(employee.status),
+      formatDate(employee.reserveStartDate),
+      formatDate(employee.reserveEndDate),
+      employee.qualifications.join(", "),
+      employee.drivingLicenses.join(", "),
+    ]),
+  ];
+
+  const exportFilteredEmployees = async (format: ExportFormat) => {
+    setIsExporting(true);
+    try {
+      await downloadTableExport(
+        {
+          filenameBase: "workforce-reserve",
+          title: "דוח כוח אדם",
+          worksheetName: "כוח אדם",
+          rows: exportRows,
+        },
+        format
+      );
+      setExportFormatOpen(false);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const saveEmployee = async () => {
@@ -280,7 +300,7 @@ export const WorkforcePage: React.FC<Props> = ({ data, onRefresh }) => {
         subtitle="ניהול כוח האדם, שיוכים מקצועיים ומעקב מילואים"
         action={
           <button
-            onClick={exportFilteredEmployees}
+            onClick={() => setExportFormatOpen(true)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted sm:w-auto"
           >
             <Download size={14} />
@@ -356,6 +376,15 @@ export const WorkforcePage: React.FC<Props> = ({ data, onRefresh }) => {
         }}
         isSaving={isSaving}
         actionError={actionError}
+      />
+
+      <ExportFormatModal
+        open={exportFormatOpen}
+        onClose={() => !isExporting && setExportFormatOpen(false)}
+        onSelect={exportFilteredEmployees}
+        title="בחירת פורמט לייצוא"
+        description="איזה פורמט לייצא עבור כוח האדם המסונן כעת?"
+        isLoading={isExporting}
       />
     </div>
   );

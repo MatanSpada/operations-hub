@@ -4,11 +4,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { DataTable } from "@/components/shared/DataTable";
 import { Modal } from "@/components/shared/Modal";
+import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import { api } from "@/api";
 import {
-  downloadCsv,
+  ExportFormat,
+  downloadTableExport,
   endOfWeekIso,
   formatDateShort,
   formatDateForInput,
@@ -55,7 +57,9 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
     from: startOfWeekIso(),
     to: endOfWeekIso(),
   });
+  const [exportFormatOpen, setExportFormatOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<CampTaskForm>({
     date: formatDateForInput(),
@@ -164,18 +168,34 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
     setIsSubmitting(false);
   };
 
-  const exportReport = () => {
-    downloadCsv("missions-report.csv", [
-      ["תאריך", "מחלקה", "שם המבקש", "מפקד מאשר", "משימה", "סיכום טיפול"],
-      ...filteredTasks.map((task) => [
-        formatDateShort(task.date),
-        task.department || "",
-        task.requesterName,
-        task.approvingCommander || "",
-        task.mission,
-        task.treatmentSummary || "",
-      ]),
-    ]);
+  const exportRows = [
+    ["תאריך", "מחלקה", "שם המבקש", "מפקד מאשר", "משימה", "סיכום טיפול"],
+    ...filteredTasks.map((task) => [
+      formatDateShort(task.date),
+      task.department || "",
+      task.requesterName,
+      task.approvingCommander || "",
+      task.mission,
+      task.treatmentSummary || "",
+    ]),
+  ];
+
+  const exportReport = async (format: ExportFormat) => {
+    setIsExporting(true);
+    try {
+      await downloadTableExport(
+        {
+          filenameBase: "missions-report",
+          title: "דוח משימות",
+          worksheetName: "משימות",
+          rows: exportRows,
+        },
+        format
+      );
+      setExportFormatOpen(false);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -230,11 +250,11 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
               className="w-full"
             />
             <button
-              onClick={exportReport}
+              onClick={() => setExportFormatOpen(true)}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border px-4 text-sm font-medium transition-colors hover:bg-muted"
             >
               <Download size={14} />
-              יצוא CSV
+              יצוא
             </button>
           </div>
         </div>
@@ -411,6 +431,15 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
           </div>
         </div>
       </Modal>
+
+      <ExportFormatModal
+        open={exportFormatOpen}
+        onClose={() => !isExporting && setExportFormatOpen(false)}
+        onSelect={exportReport}
+        title="בחירת פורמט לייצוא"
+        description="איזה פורמט לייצא עבור המשימות המסוננות בטווח הנוכחי?"
+        isLoading={isExporting}
+      />
     </div>
   );
 };

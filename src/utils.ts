@@ -12,6 +12,7 @@
 
 import { BadgeVariant, VehicleTask } from "./types";
 import { ALERT_THRESHOLDS } from "./config";
+import * as XLSX from "xlsx";
 
 // ── Date Utilities ────────────────────────────────────────────────────
 
@@ -251,7 +252,17 @@ export function inDateRange(dateStr: string | undefined, from?: string, to?: str
 
 export interface ExportFile {
   filename: string;
+  rows?: string[][];
+  bytes?: Uint8Array;
+}
+
+export type ExportFormat = "excel" | "pdf";
+
+export interface TabularExportDefinition {
+  filenameBase: string;
+  title: string;
   rows: string[][];
+  worksheetName?: string;
 }
 
 function buildCrc32Table(): Uint32Array {
@@ -310,6 +321,214 @@ function encodeCsvRows(rows: string[][]): Uint8Array {
   return new TextEncoder().encode(`\uFEFF${rowsToCsv(withSerialColumn(rows))}`);
 }
 
+function normalizeExportFileBytes(file: ExportFile): Uint8Array {
+  if (file.bytes) return file.bytes;
+  if (file.rows) return encodeCsvRows(file.rows);
+  throw new Error(`Missing rows or bytes for export file: ${file.filename}`);
+}
+
+function replaceFilenameExtension(filenameBase: string, extension: string): string {
+  const sanitizedExtension = extension.replace(/^\./, "");
+  if (filenameBase.includes(".")) {
+    return filenameBase.replace(/\.[^.]+$/, `.${sanitizedExtension}`);
+  }
+  return `${filenameBase}.${sanitizedExtension}`;
+}
+
+function sanitizeWorksheetName(name: string): string {
+  const sanitized = name.replace(/[\\/?*:[\]]/g, " ").trim();
+  return (sanitized || "Export").slice(0, 31);
+}
+
+function estimateColumnWidths(rows: string[][]): Array<{ wch: number }> {
+  const normalizedRows = withSerialColumn(rows);
+  const columnCount = normalizedRows[0]?.length ?? 0;
+
+  return Array.from({ length: columnCount }, (_, columnIndex) => {
+    const maxLength = normalizedRows.reduce((longest, row) => {
+      const valueLength = String(row[columnIndex] ?? "").length;
+      return Math.max(longest, valueLength);
+    }, 0);
+
+    return { wch: Math.min(40, Math.max(10, maxLength + 2)) };
+  });
+}
+
+function createExcelBytes(rows: string[][], worksheetName: string): Uint8Array {
+  const worksheet = XLSX.utils.aoa_to_sheet(withSerialColumn(rows));
+  worksheet["!cols"] = estimateColumnWidths(rows);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sanitizeWorksheetName(worksheetName));
+  workbook.Workbook = {
+    ...(workbook.Workbook ?? {}),
+    Views: [{ RTL: true }],
+  };
+
+  const workbookBytes = XLSX.write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+  });
+
+  return new Uint8Array(workbookBytes);
+}
+
+async function createPdfBlob(rows: string[][], title: string): Promise<Blob> {
+  if (typeof document === "undefined") {
+    throw new Error("PDF export requires a browser environment");
+  }
+
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+
+  const exportedRows = withSerialColumn(rows);
+  const landscape = exportedRows[0]?.length > 5;
+  const container = document.createElement("div");
+  const pageWidthPx = landscape ? 1122 : 794;
+
+  container.dir = "rtl";
+  container.lang = "he";
+  container.style.position = "fixed";
+  container.style.top = "0";
+  container.style.left = "-20000px";
+  container.style.width = `${pageWidthPx}px`;
+  container.style.background = "#ffffff";
+  container.style.color = "#111827";
+  container.style.padding = "32px";
+  container.style.boxSizing = "border-box";
+  container.style.fontFamily = "Arial, 'Noto Sans Hebrew', sans-serif";
+
+  const titleElement = document.createElement("div");
+  titleElement.textContent = title;
+  titleElement.style.fontSize = "28px";
+  titleElement.style.fontWeight = "700";
+  titleElement.style.marginBottom = "20px";
+  titleElement.style.textAlign = "right";
+
+  const subtitleElement = document.createElement("div");
+  subtitleElement.textContent = `סה״כ שורות: ${Math.max(0, exportedRows.length - 1)}`;
+  subtitleElement.style.fontSize = "14px";
+  subtitleElement.style.color = "#4b5563";
+  subtitleElement.style.marginBottom = "18px";
+  subtitleElement.style.textAlign = "right";
+
+  const table = document.createElement("table");
+  table.dir = "rtl";
+  table.style.width = "100%";
+  table.style.borderCollapse = "collapse";
+  table.style.tableLayout = "fixed";
+  table.style.fontSize = "14px";
+
+  exportedRows.forEach((row, rowIndex) => {
+    const rowElement = document.createElement("tr");
+
+    row.forEach((cellValue) => {
+      const cell = document.createElement(rowIndex === 0 ? "th" : "td");
+      cell.textContent = String(cellValue ?? "");
+      cell.dir = "rtl";
+      cell.style.border = "1px solid #d1d5db";
+      cell.style.padding = "10px 12px";
+      cell.style.textAlign = "right";
+      cell.style.verticalAlign = "top";
+      cell.style.wordBreak = "break-word";
+      cell.style.whiteSpace = "pre-wrap";
+      cell.style.unicodeBidi = "plaintext";
+
+      if (rowIndex === 0) {
+        cell.style.background = "#f3f4f6";
+        cell.style.fontWeight = "700";
+      }
+
+      rowElement.appendChild(cell);
+    });
+
+    table.appendChild(rowElement);
+  });
+
+  container.appendChild(titleElement);
+  container.appendChild(subtitleElement);
+  container.appendChild(table);
+  document.body.appendChild(container);
+
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+
+  const canvas = await html2canvas(container, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    useCORS: true,
+    logging: false,
+  });
+
+  document.body.removeChild(container);
+
+  const pdf = new jsPDF({
+    orientation: landscape ? "landscape" : "portrait",
+    unit: "pt",
+    format: "a4",
+    compress: true,
+  });
+  const margin = 18;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imageWidth = pageWidth - margin * 2;
+  const pxPerPt = canvas.width / imageWidth;
+  const pageContentHeightPx = Math.floor((pageHeight - margin * 2) * pxPerPt);
+
+  let offsetY = 0;
+  let pageIndex = 0;
+
+  while (offsetY < canvas.height) {
+    const sliceHeight = Math.min(pageContentHeightPx, canvas.height - offsetY);
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = sliceHeight;
+
+    const pageContext = pageCanvas.getContext("2d");
+    if (!pageContext) {
+      throw new Error("Failed to create PDF rendering context");
+    }
+
+    pageContext.fillStyle = "#ffffff";
+    pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    pageContext.drawImage(
+      canvas,
+      0,
+      offsetY,
+      canvas.width,
+      sliceHeight,
+      0,
+      0,
+      canvas.width,
+      sliceHeight
+    );
+
+    if (pageIndex > 0) {
+      pdf.addPage();
+    }
+
+    const renderedHeight = sliceHeight / pxPerPt;
+    pdf.addImage(
+      pageCanvas.toDataURL("image/png"),
+      "PNG",
+      margin,
+      margin,
+      imageWidth,
+      renderedHeight,
+      undefined,
+      "FAST"
+    );
+
+    offsetY += sliceHeight;
+    pageIndex += 1;
+  }
+
+  return pdf.output("blob");
+}
+
 function dosDateTime(date = new Date()): { dosTime: number; dosDate: number } {
   const year = Math.max(1980, date.getFullYear());
   const dosTime =
@@ -350,7 +569,7 @@ export function buildZipBlob(files: ExportFile[]): Blob {
 
   files.forEach((file) => {
     const filenameBytes = new TextEncoder().encode(file.filename);
-    const fileBytes = encodeCsvRows(file.rows);
+    const fileBytes = normalizeExportFileBytes(file);
     const checksum = crc32(fileBytes);
 
     const localHeader = new Uint8Array(30 + filenameBytes.length);
@@ -421,6 +640,44 @@ export function downloadCsv(filename: string, rows: string[][]): void {
 
 export function downloadZip(filename: string, files: ExportFile[]): void {
   downloadBlob(filename, buildZipBlob(files));
+}
+
+export async function buildExportFile(
+  definition: TabularExportDefinition,
+  format: ExportFormat
+): Promise<ExportFile> {
+  if (format === "excel") {
+    return {
+      filename: replaceFilenameExtension(definition.filenameBase, "xlsx"),
+      bytes: createExcelBytes(definition.rows, definition.worksheetName ?? definition.title),
+    };
+  }
+
+  const blob = await createPdfBlob(definition.rows, definition.title);
+  return {
+    filename: replaceFilenameExtension(definition.filenameBase, "pdf"),
+    bytes: new Uint8Array(await blob.arrayBuffer()),
+  };
+}
+
+export function downloadGeneratedFile(file: ExportFile): void {
+  const extension = file.filename.split(".").pop()?.toLowerCase();
+  const type =
+    extension === "xlsx"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : extension === "pdf"
+        ? "application/pdf"
+        : "application/octet-stream";
+
+  downloadBlob(file.filename, new Blob([normalizeExportFileBytes(file)], { type }));
+}
+
+export async function downloadTableExport(
+  definition: TabularExportDefinition,
+  format: ExportFormat
+): Promise<void> {
+  const file = await buildExportFile(definition, format);
+  downloadGeneratedFile(file);
 }
 
 export function isApartmentStale(lastSupplied?: string): boolean {

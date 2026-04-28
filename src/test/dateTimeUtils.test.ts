@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 import {
+  buildExportFile,
   buildZipBlob,
   combineDateAndTimeToIso,
   computeDurationHours,
@@ -48,5 +50,31 @@ describe("date/time utilities", () => {
     const zipBlob = buildZipBlob([{ filename: "employees.csv", rows: [["שם"], ["דנה"]] }]);
     expect(zipBlob.type).toBe("application/zip");
     expect(zipBlob.size).toBeGreaterThan(0);
+  });
+
+  it("builds a real xlsx export with serial numbering and rtl workbook metadata", async () => {
+    const file = await buildExportFile(
+      {
+        filenameBase: "employees",
+        title: "עובדים",
+        worksheetName: "עובדים",
+        rows: [["שם", "מחלקה"], ["דנה", "תפעול"]],
+      },
+      "excel"
+    );
+
+    expect(file.filename).toBe("employees.xlsx");
+    expect(file.bytes).toBeInstanceOf(Uint8Array);
+
+    const workbook = XLSX.read(file.bytes, { type: "array" });
+    expect(workbook.Workbook?.Views?.[0]?.RTL).toBe(true);
+    expect(workbook.SheetNames).toEqual(["עובדים"]);
+
+    const sheetRows = XLSX.utils.sheet_to_json<(string | number)[]>(
+      workbook.Sheets["עובדים"],
+      { header: 1 }
+    );
+    expect(sheetRows[0]).toEqual(["מספר סידורי", "שם", "מחלקה"]);
+    expect(sheetRows[1]).toEqual(["1", "דנה", "תפעול"]);
   });
 });
