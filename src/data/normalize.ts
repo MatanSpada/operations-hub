@@ -15,6 +15,7 @@ import {
   Vehicle,
   VehicleTask,
 } from "@/types";
+import { normalizeDateOnlyString } from "@/utils";
 
 type RawRow = Record<string, unknown>;
 
@@ -208,7 +209,7 @@ export function normalizeInitialData(raw: unknown): InitialData {
 
   const campTasks: CampTask[] = asRows(source.campTasks).map((row) => ({
     id: readString(row, ["id", "ID"]),
-    date: readString(row, ["date", "Date"]),
+    date: normalizeDateOnlyString(readString(row, ["date", "Date"])),
     department: readOptionalString(row, ["department", "Department"]),
     requesterName: readString(row, ["requesterName", "RequesterName"]),
     approvingCommander: readOptionalString(row, ["approvingCommander", "ApprovingCommander"]),

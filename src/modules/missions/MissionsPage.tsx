@@ -9,6 +9,7 @@ import { SearchInput } from "@/components/shared/SearchInput";
 import { DateDisplayInput } from "@/components/shared/DateDisplayInput";
 import { api } from "@/api";
 import {
+  compareDateOnlyValues,
   ExportFormat,
   downloadTableExport,
   endOfWeekIso,
@@ -34,6 +35,9 @@ interface CampTaskForm {
   treatmentSummary: string;
 }
 
+type MissionSortKey = "date" | "department" | "approvingCommander";
+type MissionSortDirection = "asc" | "desc";
+
 function formatMissionError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
   if (error.startsWith("Unknown action: createCampTask")) {
@@ -58,6 +62,7 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
     to: endOfWeekIso(),
   });
   const [exportFormatOpen, setExportFormatOpen] = useState(false);
+  const [sortState, setSortState] = useState<{ key: MissionSortKey; direction: MissionSortDirection } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -70,9 +75,41 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
     treatmentSummary: "",
   });
 
+  const taskOrderById = useMemo(
+    () => new Map(campTasks.map((task, index) => [task.id, index])),
+    [campTasks]
+  );
+
   const filteredTasks = useMemo(
-    () =>
-      campTasks
+    () => {
+      const compareBySourceOrder = (a: CampTask, b: CampTask) =>
+        (taskOrderById.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+          (taskOrderById.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
+        a.id.localeCompare(b.id, "he");
+
+      const compareByDefaultOrder = (a: CampTask, b: CampTask) => {
+        const dateCompare = compareDateOnlyValues(a.date, b.date);
+        if (dateCompare !== 0) return -dateCompare;
+        return compareBySourceOrder(a, b);
+      };
+
+      const compareOptionalText = (
+        aValue: string | undefined,
+        bValue: string | undefined,
+        direction: MissionSortDirection
+      ) => {
+        const normalizedA = aValue?.trim() ?? "";
+        const normalizedB = bValue?.trim() ?? "";
+
+        if (!normalizedA && !normalizedB) return 0;
+        if (!normalizedA) return 1;
+        if (!normalizedB) return -1;
+
+        const textCompare = normalizedA.localeCompare(normalizedB, "he", { sensitivity: "base" });
+        return direction === "asc" ? textCompare : -textCompare;
+      };
+
+      const sortedTasks = campTasks
         .filter((task) => inDateRange(task.date, reportRange.from, reportRange.to))
         .filter((task) => {
           if (!search) return true;
@@ -84,8 +121,35 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
             task.treatmentSummary?.includes(search)
           );
         })
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [campTasks, reportRange.from, reportRange.to, search]
+        .sort((a, b) => {
+          if (!sortState) return compareByDefaultOrder(a, b);
+
+          if (sortState.key === "date") {
+            const dateCompare = compareDateOnlyValues(a.date, b.date);
+            if (dateCompare !== 0) {
+              return sortState.direction === "asc" ? dateCompare : -dateCompare;
+            }
+            return compareBySourceOrder(a, b);
+          }
+
+          if (sortState.key === "department") {
+            const departmentCompare = compareOptionalText(a.department, b.department, sortState.direction);
+            if (departmentCompare !== 0) return departmentCompare;
+            return compareByDefaultOrder(a, b);
+          }
+
+          const commanderCompare = compareOptionalText(
+            a.approvingCommander,
+            b.approvingCommander,
+            sortState.direction
+          );
+          if (commanderCompare !== 0) return commanderCompare;
+          return compareByDefaultOrder(a, b);
+        });
+
+      return sortedTasks;
+    },
+    [campTasks, reportRange.from, reportRange.to, search, sortState, taskOrderById]
   );
 
   const requesterCount = useMemo(
@@ -104,6 +168,19 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
       treatmentSummary: "",
     });
     setTaskModalOpen(true);
+  };
+
+  const toggleSort = (key: MissionSortKey) => {
+    setSortState((current) => {
+      if (current?.key !== key) {
+        return { key, direction: key === "date" ? "desc" : "asc" };
+      }
+
+      return {
+        key,
+        direction: current.direction === "desc" ? "asc" : "desc",
+      };
+    });
   };
 
   const openEditModal = (task: CampTask) => {
@@ -261,10 +338,31 @@ export const MissionsPage: React.FC<Props> = ({ data, onRefresh }) => {
 
         <DataTable
           columns={[
-            { key: "date", header: "תאריך", render: (task: CampTask) => formatDateShort(task.date) },
-            { key: "department", header: "מחלקה", render: (task: CampTask) => task.department || "—" },
+            {
+              key: "date",
+              header: "תאריך",
+              render: (task: CampTask) => formatDateShort(task.date),
+              sortable: true,
+              sortDirection: sortState?.key === "date" ? sortState.direction : null,
+              onSort: () => toggleSort("date"),
+            },
+            {
+              key: "department",
+              header: "מחלקה",
+              render: (task: CampTask) => task.department || "—",
+              sortable: true,
+              sortDirection: sortState?.key === "department" ? sortState.direction : null,
+              onSort: () => toggleSort("department"),
+            },
             { key: "requesterName", header: "שם המבקש" },
-            { key: "approvingCommander", header: "מפקד מאשר", render: (task: CampTask) => task.approvingCommander || "—" },
+            {
+              key: "approvingCommander",
+              header: "מפקד מאשר",
+              render: (task: CampTask) => task.approvingCommander || "—",
+              sortable: true,
+              sortDirection: sortState?.key === "approvingCommander" ? sortState.direction : null,
+              onSort: () => toggleSort("approvingCommander"),
+            },
             { key: "mission", header: "משימה" },
             { key: "treatmentSummary", header: "סיכום טיפול", render: (task: CampTask) => task.treatmentSummary || "—" },
             {

@@ -853,7 +853,7 @@ function normalizeVehicleTask_(row) {
 function normalizeCampTask_(row) {
   return {
     id: stringValue_(row.ID),
-    date: stringValue_(row.Date),
+    date: dateOnlyValue_(row.Date),
     department: optionalString_(row.Department),
     requesterName: stringValue_(row.RequesterName),
     approvingCommander: optionalString_(row.ApprovingCommander),
@@ -1793,6 +1793,14 @@ function indexByField_(rows, keyField, valueField) {
 
 function stringValue_(value) {
   return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function dateOnlyValue_(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+
+  return stringValue_(value);
 }
 
 function optionalString_(value) {

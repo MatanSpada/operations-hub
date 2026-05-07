@@ -7,12 +7,16 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 interface Column<T> {
   key: string;
   header: string;
   render?: (row: T) => React.ReactNode;
   className?: string;
+  sortable?: boolean;
+  sortDirection?: "asc" | "desc" | null;
+  onSort?: () => void;
 }
 
 interface DataTableProps<T> {
@@ -43,12 +47,38 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
+                  aria-sort={
+                    col.sortable
+                      ? col.sortDirection === "asc"
+                        ? "ascending"
+                        : col.sortDirection === "desc"
+                          ? "descending"
+                          : "none"
+                      : undefined
+                  }
                   className={cn(
                     "whitespace-nowrap px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-4",
                     col.className
                   )}
                 >
-                  {col.header}
+                  {col.sortable && col.onSort ? (
+                    <button
+                      type="button"
+                      onClick={col.onSort}
+                      className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                    >
+                      <span>{col.header}</span>
+                      {col.sortDirection === "asc" ? (
+                        <ArrowUp size={12} aria-hidden="true" />
+                      ) : col.sortDirection === "desc" ? (
+                        <ArrowDown size={12} aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown size={12} aria-hidden="true" />
+                      )}
+                    </button>
+                  ) : (
+                    col.header
+                  )}
                 </th>
               ))}
             </tr>

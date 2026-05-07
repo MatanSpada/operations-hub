@@ -4,12 +4,14 @@ import {
   buildExportFile,
   buildPdfPagePlans,
   buildZipBlob,
+  compareDateOnlyValues,
   combineDateAndTimeToIso,
   computeDurationHours,
   formatDate,
   formatDateShort,
   formatDateTime,
   inDateRange,
+  normalizeDateOnlyString,
   withSerialColumn,
 } from "@/utils";
 
@@ -33,6 +35,12 @@ describe("date/time utilities", () => {
     const iso = combineDateAndTimeToIso("2026-03-20", "00:30");
     expect(iso).toBeTruthy();
     expect(inDateRange(iso ?? undefined, "2026-03-20", "2026-03-20")).toBe(true);
+  });
+
+  it("normalizes and compares date-only values by chronology instead of text shape", () => {
+    expect(normalizeDateOnlyString("15/04/26")).toBe("2026-04-15");
+    expect(normalizeDateOnlyString("Tue Apr 28 2026 00:00:00 GMT+0300")).toBe("2026-04-28");
+    expect(compareDateOnlyValues("2026-05-05", "15/04/26")).toBeGreaterThan(0);
   });
 
   it("adds serial numbering to exported rows and can package files as zip", async () => {

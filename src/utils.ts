@@ -23,19 +23,47 @@ function pad2(value: number): string {
 function parseDateValue(dateStr?: string): Date | null {
   if (!dateStr) return null;
 
+  const trimmed = dateStr.trim();
+  const shortSlashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (shortSlashMatch) {
+    const [, dayPart, monthPart, yearPart] = shortSlashMatch;
+    const day = Number(dayPart);
+    const month = Number(monthPart);
+    const year = yearPart.length === 2 ? 2000 + Number(yearPart) : Number(yearPart);
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     const [year, month, day] = dateStr.split("-").map(Number);
     return new Date(year, month - 1, day);
   }
 
-  const parsed = new Date(dateStr);
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function normalizeDateOnlyString(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = parseDateValue(dateStr);
+  return date ? formatDateForInput(date) : dateStr.trim();
 }
 
 export function toLocalDateKey(dateStr?: string): string | null {
   const date = parseDateValue(dateStr);
   if (!date) return null;
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+export function compareDateOnlyValues(a?: string, b?: string): number {
+  const aKey = toLocalDateKey(a);
+  const bKey = toLocalDateKey(b);
+
+  if (aKey && bKey) return aKey.localeCompare(bKey);
+  if (aKey) return 1;
+  if (bKey) return -1;
+
+  return (a ?? "").localeCompare(b ?? "", "he");
 }
 
 /** Format ISO date to Israeli locale (DD/MM/YYYY) */
