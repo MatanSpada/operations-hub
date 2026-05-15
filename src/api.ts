@@ -253,6 +253,13 @@ export const api = {
     notes?: string;
   }) => postActionDetailed<{ plate: string }>("createVehicle", data),
 
+  updateVehicleDetailed: (data: {
+    originalPlate: string;
+    plate: string;
+    vehicleType?: string;
+    notes?: string;
+  }) => postActionDetailed<{ plate: string }>("updateVehicle", data),
+
   createCampTaskDetailed: (data: {
     date: string;
     department?: string;

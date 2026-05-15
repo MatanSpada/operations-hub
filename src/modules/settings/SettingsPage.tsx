@@ -11,6 +11,7 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
 import { EmployeeEditorForm, EmployeeEditorModal } from "@/components/shared/EmployeeEditorModal";
+import { VehicleEditorForm, VehicleEditorModal } from "@/components/shared/VehicleEditorModal";
 import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { Modal } from "@/components/shared/Modal";
 import { DataTable } from "@/components/shared/DataTable";
@@ -126,6 +127,10 @@ const EXPORT_TITLE_BY_TARGET: Record<ExportTarget, string> = {
 function formatManagementError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
 
+  if (error.startsWith("Unknown action: updateVehicle")) {
+    return "הפריסה הפעילה של Apps Script עדיין לא כוללת את updateVehicle. יש לפרוס מחדש את ה-Web App או לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה.";
+  }
+
   const errorMap: Record<string, string> = {
     "Department already exists": "מחלקה בשם הזה כבר קיימת",
     "Qualification already exists": "הכשרה בשם הזה כבר קיימת",
@@ -226,6 +231,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   const [search, setSearch] = useState("");
   const [createModal, setCreateModal] = useState<Exclude<ManagementSection, "exports"> | null>(null);
   const [editEmployeeForm, setEditEmployeeForm] = useState<EmployeeEditorForm | null>(null);
+  const [editVehicleForm, setEditVehicleForm] = useState<VehicleEditorForm | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -597,6 +603,18 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     });
   };
 
+  const openEditVehicleModal = (vehicle: Vehicle) => {
+    setActionError(null);
+    setEditVehicleForm({
+      originalPlate: vehicle.plate,
+      plate: vehicle.plate,
+      vehicleType: vehicle.vehicleType || "",
+      notes: vehicle.notes || "",
+      status: vehicle.status,
+      currentDriver: vehicle.currentDriver || "",
+    });
+  };
+
   const submitCreate = async () => {
     if (!createModal) return;
 
@@ -769,6 +787,29 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     setEditEmployeeForm(null);
   };
 
+  const saveVehicle = async () => {
+    if (!editVehicleForm) return;
+
+    setIsSaving(true);
+    setActionError(null);
+    const result = await api.updateVehicleDetailed({
+      originalPlate: editVehicleForm.originalPlate,
+      plate: editVehicleForm.plate.trim(),
+      vehicleType: editVehicleForm.vehicleType.trim() || undefined,
+      notes: editVehicleForm.notes.trim() || undefined,
+    });
+
+    if (!result.data) {
+      setActionError(formatManagementError(result.error));
+      setIsSaving(false);
+      return;
+    }
+
+    await onRefresh();
+    setIsSaving(false);
+    setEditVehicleForm(null);
+  };
+
   const departmentColumns = [
     { key: "name", header: "מחלקה" },
     { key: "employeeCount", header: "עובדים" },
@@ -866,7 +907,16 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
   ];
 
   const vehicleColumns = [
-    { key: "plate", header: "לוחית רישוי" },
+    {
+      key: "plate",
+      header: "לוחית רישוי",
+      render: (vehicle: Vehicle) => (
+        <div>
+          <div className="font-semibold text-foreground">{vehicle.plate}</div>
+          <div className="text-xs text-muted-foreground">לחיצה על השורה לעריכה</div>
+        </div>
+      ),
+    },
     { key: "vehicleType", header: "סוג רכב", render: (vehicle: Vehicle) => vehicle.vehicleType || "—" },
     {
       key: "status",
@@ -882,7 +932,10 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       header: "פעולות",
       render: (vehicle: Vehicle) => (
         <button
-          onClick={() => setDeleteTarget({ id: vehicle.plate, label: vehicle.plate, type: "vehicles" })}
+          onClick={(event) => {
+            event.stopPropagation();
+            setDeleteTarget({ id: vehicle.plate, label: vehicle.plate, type: "vehicles" });
+          }}
           className="text-xs font-medium text-status-danger-text hover:underline"
         >
           מחק
@@ -1411,7 +1464,13 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
             rowKey={sectionContent[activeSection].rowKey}
             emptyMessage={sectionContent[activeSection].emptyMessage}
             minWidthClassName="min-w-[56rem]"
-            onRowClick={activeSection === "employees" ? openEditEmployeeModal : undefined}
+            onRowClick={
+              activeSection === "employees"
+                ? openEditEmployeeModal
+                : activeSection === "vehicles"
+                  ? openEditVehicleModal
+                  : undefined
+            }
           />
         </>
       )}
@@ -1454,6 +1513,21 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
         onSave={saveEmployee}
         onClose={() => {
           setEditEmployeeForm(null);
+          setActionError(null);
+        }}
+        isSaving={isSaving}
+        actionError={actionError}
+      />
+
+      <VehicleEditorModal
+        open={!!editVehicleForm}
+        title={editVehicleForm ? `עריכת רכב: ${editVehicleForm.originalPlate}` : "עריכת רכב"}
+        form={editVehicleForm}
+        drivingLicenses={drivingLicenses}
+        onChange={setEditVehicleForm}
+        onSave={saveVehicle}
+        onClose={() => {
+          setEditVehicleForm(null);
           setActionError(null);
         }}
         isSaving={isSaving}

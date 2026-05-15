@@ -80,6 +80,9 @@ function doPost(e) {
     if (action === "createVehicle") {
       return createVehicle_(payload);
     }
+    if (action === "updateVehicle") {
+      return updateVehicle_(payload);
+    }
     if (action === "createCampTask") {
       return createCampTask_(payload);
     }
@@ -548,6 +551,46 @@ function createVehicle_(payload) {
   });
 }
 
+function updateVehicle_(payload) {
+  const originalPlate = String(payload.originalPlate || "").trim();
+  const plate = String(payload.plate || "").trim();
+  const vehicleType = String(payload.vehicleType || "").trim();
+  const notes = String(payload.notes || "").trim();
+
+  if (!originalPlate) {
+    throw new Error("Vehicle not found");
+  }
+  if (!plate) {
+    throw new Error("Missing vehicle plate");
+  }
+  if (!getVehicleByPlate_(originalPlate)) {
+    throw new Error("Vehicle not found");
+  }
+  if (vehicleType && !drivingLicenseExists_(vehicleType)) {
+    throw new Error("Driving license not found");
+  }
+  if (vehicleExistsOtherThan_(plate, originalPlate)) {
+    throw new Error("Vehicle already exists");
+  }
+
+  updateRow_(SHEETS.VEHICLES, "Plate", originalPlate, {
+    Plate: plate,
+    VehicleType: vehicleType,
+    Notes: notes,
+  });
+
+  if (originalPlate !== plate) {
+    updateRowsByField_(SHEETS.VEHICLE_TRIPS, "Plate", originalPlate, {
+      Plate: plate,
+    });
+  }
+
+  return jsonResponse_({
+    success: true,
+    data: { plate: plate },
+  });
+}
+
 function createCampTask_(payload) {
   const taskId = generateId_();
   const requesterName = String(payload.requesterName || "").trim();
@@ -997,6 +1040,36 @@ function updateRow_(sheetName, keyColumn, keyValue, updates) {
   return false;
 }
 
+function updateRowsByField_(sheetName, keyColumn, keyValue, updates) {
+  const sheet = getSheet_(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return 0;
+
+  const headers = values[0];
+  const keyIndex = headers.indexOf(keyColumn);
+  if (keyIndex === -1) {
+    throw new Error("Column not found: " + keyColumn + " in " + sheetName);
+  }
+
+  var updatedCount = 0;
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    if (String(values[rowIndex][keyIndex]) !== String(keyValue)) {
+      continue;
+    }
+
+    Object.keys(updates).forEach(function (columnName) {
+      const columnIndex = headers.indexOf(columnName);
+      if (columnIndex !== -1) {
+        sheet.getRange(rowIndex + 1, columnIndex + 1).setValue(updates[columnName]);
+      }
+    });
+    updatedCount += 1;
+  }
+
+  return updatedCount;
+}
+
 function deleteRow_(sheetName, keyColumn, keyValue, extraFilter) {
   const sheet = getSheet_(sheetName);
   const values = sheet.getDataRange().getValues();
@@ -1184,6 +1257,24 @@ function vehicleExists_(plate) {
       return true;
     }
   }
+  return false;
+}
+
+function vehicleExistsOtherThan_(plate, originalPlate) {
+  const normalizedPlate = String(plate || "").trim();
+  const normalizedOriginalPlate = String(originalPlate || "").trim();
+  const rows = getRows_(SHEETS.VEHICLES);
+
+  for (var index = 0; index < rows.length; index++) {
+    const rowPlate = String(rows[index].Plate || "").trim();
+    if (rowPlate === normalizedOriginalPlate) {
+      continue;
+    }
+    if (rowPlate === normalizedPlate) {
+      return true;
+    }
+  }
+
   return false;
 }
 
