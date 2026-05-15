@@ -910,12 +910,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
     {
       key: "plate",
       header: "לוחית רישוי",
-      render: (vehicle: Vehicle) => (
-        <div>
-          <div className="font-semibold text-foreground">{vehicle.plate}</div>
-          <div className="text-xs text-muted-foreground">לחיצה על השורה לעריכה</div>
-        </div>
-      ),
+      render: (vehicle: Vehicle) => <div className="font-semibold text-foreground">{vehicle.plate}</div>,
     },
     { key: "vehicleType", header: "סוג רכב", render: (vehicle: Vehicle) => vehicle.vehicleType || "—" },
     {
@@ -949,10 +944,7 @@ export const SettingsPage: React.FC<Props> = ({ data, onRefresh }) => {
       key: "name",
       header: "עובד",
       render: (employee: typeof employeeRows[number]) => (
-        <div>
-          <div className="font-semibold text-foreground">{employee.name}</div>
-          <div className="text-xs text-muted-foreground">לחיצה על השורה לעריכה</div>
-        </div>
+        <div className="font-semibold text-foreground">{employee.name}</div>
       ),
     },
     { key: "department", header: "מחלקה" },

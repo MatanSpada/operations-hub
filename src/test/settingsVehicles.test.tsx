@@ -6,9 +6,13 @@ import { SettingsPage } from "@/modules/settings/SettingsPage";
 const { updateVehicleDetailed } = vi.hoisted(() => ({
   updateVehicleDetailed: vi.fn(),
 }));
+const { updateEmployeeDetailed } = vi.hoisted(() => ({
+  updateEmployeeDetailed: vi.fn(),
+}));
 
 vi.mock("@/api", () => ({
   api: {
+    updateEmployeeDetailed,
     updateVehicleDetailed,
   },
 }));
@@ -20,7 +24,16 @@ function buildSettingsData() {
       { ID: "dl1", Name: "C1" },
       { ID: "dl2", Name: "B" },
     ],
-    employees: [],
+    employees: [
+      {
+        ID: "e1",
+        Name: "עובד בדיקה",
+        Department: "לוגיסטיקה",
+        Status: "active",
+        Phone: "050-1234567",
+        Role: "נהג",
+      },
+    ],
     vehicles: [
       {
         Plate: "123-45-678",
@@ -43,9 +56,9 @@ function buildSettingsData() {
     foodProducts: [],
     foodTransactions: [],
     apartments: [],
-    qualifications: [],
-    employeeQualifications: [],
-    employeeDrivingLicenses: [],
+    qualifications: [{ ID: "q1", Name: "הכשרה א" }],
+    employeeQualifications: [{ EmployeeID: "e1", QualificationID: "q1" }],
+    employeeDrivingLicenses: [{ EmployeeID: "e1", DrivingLicenseID: "dl1" }],
   });
 }
 
@@ -53,6 +66,20 @@ describe("SettingsPage vehicles editing", () => {
   beforeEach(() => {
     updateVehicleDetailed.mockReset();
     updateVehicleDetailed.mockResolvedValue({ data: { plate: "987-65-432" } });
+    updateEmployeeDetailed.mockReset();
+    updateEmployeeDetailed.mockResolvedValue({ data: true });
+  });
+
+  it("keeps employee row editing available and removes the row-click hint text", () => {
+    render(<SettingsPage data={buildSettingsData()} onRefresh={vi.fn()} />);
+
+    expect(screen.queryByText("לחיצה על השורה לעריכה")).not.toBeInTheDocument();
+
+    const employeeTable = screen.getByRole("table");
+    const employeeRow = within(employeeTable).getAllByRole("row")[1];
+    fireEvent.click(employeeRow);
+
+    expect(screen.getByRole("heading", { name: "עריכת עובד: עובד בדיקה" })).toBeInTheDocument();
   });
 
   it("opens a vehicle edit modal from the Data Management vehicles table and persists changes", async () => {
