@@ -6,6 +6,7 @@ import { ExportFormatModal } from "@/components/shared/ExportFormatModal";
 import { Modal } from "@/components/shared/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/shared/SummaryCard";
+import { VehicleEditorForm, VehicleEditorModal } from "@/components/shared/VehicleEditorModal";
 import { api } from "@/api";
 import {
   ExportFormat,
@@ -61,6 +62,9 @@ interface VehicleReturnForm {
 
 function formatVehicleError(error?: string): string {
   if (!error) return "הפעולה נכשלה";
+  if (error.startsWith("Unknown action: updateVehicle")) {
+    return "הפריסה הפעילה של Apps Script עדיין לא כוללת את updateVehicle. יש לפרוס מחדש את ה-Web App או לעדכן את VITE_GAS_URL לכתובת הפריסה החדשה.";
+  }
   if (error === "Driving license not found") {
     return "סוג הרכב אינו קיים עוד ברשימת הרישיונות המנוהלת";
   }
@@ -68,9 +72,10 @@ function formatVehicleError(error?: string): string {
 }
 
 export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
-  const { vehicles, vehicleTasks, departments } = data;
+  const { vehicles, vehicleTasks, departments, drivingLicenses } = data;
   const [checkoutModal, setCheckoutModal] = useState<Vehicle | null>(null);
   const [returnModal, setReturnModal] = useState<Vehicle | null>(null);
+  const [editVehicleForm, setEditVehicleForm] = useState<VehicleEditorForm | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reportRange, setReportRange] = useState({
@@ -166,6 +171,23 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
     });
   };
 
+  const openEditVehicleModal = (vehicle: Vehicle) => {
+    setActionError(null);
+    setEditVehicleForm({
+      originalPlate: vehicle.plate,
+      plate: vehicle.plate,
+      vehicleType: vehicle.vehicleType || "",
+      notes: vehicle.notes || "",
+      status: vehicle.status,
+      currentDriver: vehicle.currentDriver || "",
+    });
+  };
+
+  const closeEditVehicleModal = () => {
+    setEditVehicleForm(null);
+    setActionError(null);
+  };
+
   const returnDateTimeIso = combineDateAndTimeToIso(returnForm.endDate, returnForm.endTime);
   const calculatedDuration = computeDurationHours(returnModal?.departureTime, returnDateTimeIso ?? undefined);
 
@@ -236,6 +258,29 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
   const handleMaintenance = async (plate: string) => {
     await api.updateVehicleStatus(plate, "maintenance");
     await onRefresh();
+  };
+
+  const saveVehicle = async () => {
+    if (!editVehicleForm) return;
+
+    setIsSubmitting(true);
+    setActionError(null);
+    const result = await api.updateVehicleDetailed({
+      originalPlate: editVehicleForm.originalPlate,
+      plate: editVehicleForm.plate.trim(),
+      vehicleType: editVehicleForm.vehicleType.trim() || undefined,
+      notes: editVehicleForm.notes.trim() || undefined,
+    });
+
+    if (!result.data) {
+      setActionError(formatVehicleError(result.error));
+      setIsSubmitting(false);
+      return;
+    }
+
+    await onRefresh();
+    setIsSubmitting(false);
+    closeEditVehicleModal();
   };
 
   const exportRows = [
@@ -313,7 +358,8 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           {vehicle.status === "available" && (
             <>
               <button
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   setCheckoutModal(vehicle);
                   setActionError(null);
                 }}
@@ -322,7 +368,10 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
                 פתח משימה
               </button>
               <button
-                onClick={() => handleMaintenance(vehicle.plate)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleMaintenance(vehicle.plate);
+                }}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 תחזוקה
@@ -331,7 +380,10 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           )}
           {vehicle.status === "in_use" && (
             <button
-              onClick={() => openReturnModal(vehicle)}
+              onClick={(event) => {
+                event.stopPropagation();
+                openReturnModal(vehicle);
+              }}
               className="text-xs font-medium text-status-success-text hover:underline"
             >
               סגירת משימה
@@ -339,7 +391,10 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           )}
           {vehicle.status === "maintenance" && (
             <button
-              onClick={() => api.updateVehicleStatus(vehicle.plate, "available").then(onRefresh)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void api.updateVehicleStatus(vehicle.plate, "available").then(onRefresh);
+              }}
               className="text-xs font-medium text-primary hover:underline"
             >
               סיים תחזוקה
@@ -433,6 +488,7 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
           columns={vehicleColumns}
           data={vehicles}
           rowKey={(vehicle) => vehicle.plate}
+          onRowClick={openEditVehicleModal}
           emptyMessage="אין רכבים להצגה"
           minWidthClassName="min-w-[60rem]"
         />
@@ -673,6 +729,18 @@ export const VehiclesPage: React.FC<Props> = ({ data, onRefresh }) => {
         title="בחירת פורמט לייצוא"
         description="איזה פורמט לייצא עבור משימות הרכב הסגורות בטווח הנוכחי?"
         isLoading={isExporting}
+      />
+
+      <VehicleEditorModal
+        open={!!editVehicleForm}
+        title={editVehicleForm ? `עריכת רכב: ${editVehicleForm.originalPlate}` : "עריכת רכב"}
+        form={editVehicleForm}
+        drivingLicenses={drivingLicenses}
+        onChange={setEditVehicleForm}
+        onSave={saveVehicle}
+        onClose={closeEditVehicleModal}
+        isSaving={isSubmitting}
+        actionError={actionError}
       />
     </div>
   );
