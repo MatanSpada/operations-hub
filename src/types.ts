@@ -183,6 +183,16 @@ export interface SupplyApartment {
   updated_at?: string;
 }
 
+export interface SupplyApartmentInput {
+  apartment_id?: string;
+  location: string;
+  mission: string;
+  type: string;
+  notes?: string;
+  report_token?: string;
+  active?: boolean;
+}
+
 export interface SupplyStandardItem {
   standard_item_id: string;
   apartment_id: string;
@@ -193,6 +203,18 @@ export interface SupplyStandardItem {
   photo_required: boolean;
   active: boolean;
   notes?: string;
+}
+
+export interface SupplyStandardItemInput {
+  standard_item_id?: string;
+  apartment_id: string;
+  category: string;
+  item_name: string;
+  required_value?: string;
+  required_type: SupplyRequiredType;
+  photo_required: boolean;
+  notes?: string;
+  active?: boolean;
 }
 
 export interface SupplyReport {

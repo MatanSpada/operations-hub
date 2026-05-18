@@ -1,9 +1,11 @@
 import { ApiActionResult, postActionDetailed } from "@/api";
 import {
   SupplyApartment,
+  SupplyApartmentInput,
   SupplyReportDetails,
   SupplyReportsByApartmentResult,
   SupplyReportsQueryOptions,
+  SupplyStandardItemInput,
   SupplyStandardItem,
 } from "@/types";
 import {
@@ -81,11 +83,109 @@ export async function getSupplyReportDetails(reportId: string): Promise<ApiActio
   return { data: details };
 }
 
+export async function createSupplyApartment(
+  input: SupplyApartmentInput,
+): Promise<ApiActionResult<SupplyApartment>> {
+  const result = await postActionDetailed<unknown>("supply_create_apartment", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to create supply apartment");
+
+  const apartment = normalizeSupplyApartmentResponse(result.data);
+  if (!apartment) return buildErrorResult("Supply apartment not found after creation");
+
+  return { data: apartment };
+}
+
+export async function updateSupplyApartment(
+  apartmentId: string,
+  input: SupplyApartmentInput,
+): Promise<ApiActionResult<SupplyApartment>> {
+  const result = await postActionDetailed<unknown>("supply_update_apartment", {
+    apartmentId,
+    ...input,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to update supply apartment");
+
+  const apartment = normalizeSupplyApartmentResponse(result.data);
+  if (!apartment) return buildErrorResult("Supply apartment not found after update");
+
+  return { data: apartment };
+}
+
+export async function deactivateSupplyApartment(
+  apartmentId: string,
+): Promise<ApiActionResult<{ apartment_id: string; active: boolean }>> {
+  const result = await postActionDetailed<{ apartment_id: string; active: boolean }>(
+    "supply_deactivate_apartment",
+    { apartmentId },
+  );
+  if (!result.data) return buildErrorResult(result.error || "Failed to deactivate supply apartment");
+
+  return { data: result.data };
+}
+
+export async function createSupplyStandardItem(
+  input: SupplyStandardItemInput,
+): Promise<ApiActionResult<SupplyStandardItem>> {
+  const result = await postActionDetailed<unknown>("supply_create_standard_item", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to create supply standard item");
+
+  const items = normalizeSupplyStandardItems([result.data], input.apartment_id);
+  const item = items[0];
+  if (!item) return buildErrorResult("Supply standard item not found after creation");
+
+  return { data: item };
+}
+
+export async function updateSupplyStandardItem(
+  standardItemId: string,
+  input: SupplyStandardItemInput,
+): Promise<ApiActionResult<SupplyStandardItem>> {
+  const result = await postActionDetailed<unknown>("supply_update_standard_item", {
+    standardItemId,
+    ...input,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to update supply standard item");
+
+  const items = normalizeSupplyStandardItems([result.data], input.apartment_id);
+  const item = items[0];
+  if (!item) return buildErrorResult("Supply standard item not found after update");
+
+  return { data: item };
+}
+
+export async function deactivateSupplyStandardItem(
+  standardItemId: string,
+): Promise<ApiActionResult<{ standard_item_id: string; active: boolean }>> {
+  const result = await postActionDetailed<{ standard_item_id: string; active: boolean }>(
+    "supply_deactivate_standard_item",
+    { standardItemId },
+  );
+  if (!result.data) return buildErrorResult(result.error || "Failed to deactivate supply standard item");
+
+  return { data: result.data };
+}
+
+export async function seedSupplyDemoData(): Promise<ApiActionResult<{ apartments: number; items: number }>> {
+  const result = await postActionDetailed<{ apartments: number; items: number }>(
+    "supply_seed_demo_data",
+    {},
+  );
+  if (!result.data) return buildErrorResult(result.error || "Failed to seed supply demo data");
+
+  return { data: result.data };
+}
+
 export const supplyControlApi = {
   getSupplyApartments,
   getSupplyApartment,
   getSupplyStandardItems,
   getSupplyReportsByApartment,
   getSupplyReportDetails,
+  createSupplyApartment,
+  updateSupplyApartment,
+  deactivateSupplyApartment,
+  createSupplyStandardItem,
+  updateSupplyStandardItem,
+  deactivateSupplyStandardItem,
+  seedSupplyDemoData,
 };
-
