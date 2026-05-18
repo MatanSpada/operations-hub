@@ -54,6 +54,7 @@ export const TAB_LABELS: Record<string, string> = {
   workforce: "כוח אדם ומילואים",
   qualifications: "הכשרות",
   settings: "ניהול נתונים",
+  apartmentSupplyControl: "בקרת אספקת דירות",
 };
 
 // ── Alert Thresholds ────────────────────────────────────────────────

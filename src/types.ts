@@ -22,7 +22,8 @@ export type TabId =
   | "vehicles"
   | "workforce"
   | "qualifications"
-  | "settings";
+  | "settings"
+  | "apartmentSupplyControl";
 
 // ── Employees ────────────────────────────────────────────────────────
 // UPDATE SHEET COLUMN MAP HERE — matches Employees sheet columns
@@ -161,6 +162,87 @@ export interface EmployeeQualification {
 export interface EmployeeDrivingLicense {
   employeeId: string;
   drivingLicenseId: string;
+}
+
+// ── Apartment Supply Control ────────────────────────────────────────
+export type SupplyRequiredType = "exists" | "quantity" | "text";
+
+export type SupplyReportedStatus = "ok" | "missing" | "partial" | "not_relevant";
+
+export type SupplyPhotoCategory = "מקרר" | "ציוד ניקוי אקסטרה" | "מצעים" | "חריגים";
+
+export interface SupplyApartment {
+  apartment_id: string;
+  location: string;
+  mission: string;
+  type: string;
+  notes?: string;
+  report_token?: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SupplyStandardItem {
+  standard_item_id: string;
+  apartment_id: string;
+  category: string;
+  item_name: string;
+  required_value?: string;
+  required_type: SupplyRequiredType;
+  photo_required: boolean;
+  active: boolean;
+  notes?: string;
+}
+
+export interface SupplyReport {
+  report_id: string;
+  apartment_id: string;
+  reporter_initials?: string;
+  reported_at: string;
+  general_notes?: string;
+  overall_status?: string;
+}
+
+export interface SupplyReportItem {
+  report_item_id: string;
+  report_id: string;
+  standard_item_id?: string;
+  item_name: string;
+  required_value?: string;
+  reported_status: SupplyReportedStatus;
+  actual_value?: string;
+  item_notes?: string;
+}
+
+export interface SupplyReportPhoto {
+  photo_id: string;
+  report_id: string;
+  apartment_id: string;
+  category: SupplyPhotoCategory;
+  drive_file_id?: string;
+  drive_url?: string;
+  uploaded_at?: string;
+  notes?: string;
+}
+
+export interface SupplyReportsQueryOptions {
+  limit?: number;
+  page?: number;
+}
+
+export interface SupplyReportsByApartmentResult {
+  reports: SupplyReport[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SupplyReportDetails {
+  report: SupplyReport;
+  apartment: SupplyApartment;
+  items: SupplyReportItem[];
+  photos: SupplyReportPhoto[];
 }
 
 // ── API Response ─────────────────────────────────────────────────────

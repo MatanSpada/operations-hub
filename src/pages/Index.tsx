@@ -21,6 +21,7 @@ import { VehiclesPage } from "@/modules/vehicles/VehiclesPage";
 import { WorkforcePage } from "@/modules/workforce/WorkforcePage";
 import { QualificationsPage } from "@/modules/qualifications/QualificationsPage";
 import { SettingsPage } from "@/modules/settings/SettingsPage";
+import { ApartmentSupplyControlPage } from "@/modules/apartment-supply-control/ApartmentSupplyControlPage";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Index() {
@@ -71,6 +72,8 @@ export default function Index() {
       case "workforce":     return <WorkforcePage data={data} onRefresh={load} />;
       case "qualifications":return <QualificationsPage data={data} />;
       case "settings":      return <SettingsPage data={data} onRefresh={load} />;
+      case "apartmentSupplyControl":
+        return <ApartmentSupplyControlPage />;
       default:              return null;
     }
   };
