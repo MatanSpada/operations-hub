@@ -11,6 +11,7 @@ import {
   SupplyReportsQueryOptions,
   SupplyStandardItemInput,
   SupplyStandardItem,
+  SupplyUpdateReportInput,
 } from "@/types";
 import {
   normalizeSupplyCreateReportResult,
@@ -116,6 +117,18 @@ export async function createSupplyReport(
   return { data: reportResult };
 }
 
+export async function updateSupplyReport(
+  input: SupplyUpdateReportInput,
+): Promise<ApiActionResult<SupplyCreateReportResult>> {
+  const result = await postActionDetailed<unknown>("supply_update_report", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to update supply report");
+
+  const reportResult = normalizeSupplyCreateReportResult(result.data);
+  if (!reportResult) return buildErrorResult("Supply report update result is invalid");
+
+  return { data: reportResult };
+}
+
 export async function createSupplyApartment(
   input: SupplyApartmentInput,
 ): Promise<ApiActionResult<SupplyApartment>> {
@@ -216,6 +229,7 @@ export const supplyControlApi = {
   getSupplyReportDetails,
   getSupplyReportingContext,
   createSupplyReport,
+  updateSupplyReport,
   createSupplyApartment,
   updateSupplyApartment,
   deactivateSupplyApartment,

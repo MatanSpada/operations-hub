@@ -7,12 +7,12 @@ import {
   SupplyApartment,
   SupplyCreateReportInput,
   SupplyCreateReportResult,
-  SupplyOverallStatus,
   SupplyReportedStatus,
   SupplyReportingContext,
   SupplyReportingContextParams,
   SupplyRequiredType,
   SupplyStandardItem,
+  SupplyUpdateReportInput,
 } from "@/types";
 
 type ReportItemFormState = {
@@ -35,13 +35,6 @@ const STATUS_OPTIONS: Array<{ value: SupplyReportedStatus; label: string }> = [
   { value: "partial", label: "חלקי" },
   { value: "not_relevant", label: "לא רלוונטי" },
 ];
-
-const OVERALL_STATUS_LABELS: Record<SupplyOverallStatus, string> = {
-  ok: "תקין",
-  partial: "חלקי",
-  missing: "חסר",
-  issue: "נדרשת בדיקה",
-};
 
 const CATEGORY_ORDER = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי"] as const;
 
@@ -124,6 +117,8 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<SupplyCreateReportResult | null>(null);
+  const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
+  const [isEditingSubmittedReport, setIsEditingSubmittedReport] = useState(false);
 
   const groupedItems = useMemo(
     () => groupItemsByCategory(context?.standardItems || []),
@@ -158,6 +153,8 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     setContext(result.data);
     setSelectedApartmentId(result.data.apartment.apartment_id);
     setItemStates(buildInitialItemStates(result.data.standardItems));
+    setSubmittedReportId(null);
+    setIsEditingSubmittedReport(false);
     setLoading(false);
   }, [loadApartmentOptions]);
 
@@ -244,15 +241,28 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     };
 
     setSubmitting(true);
-    const result = await supplyControlApi.createSupplyReport(payload);
+    const result = submittedReportId
+      ? await supplyControlApi.updateSupplyReport({
+          ...(payload as SupplyUpdateReportInput),
+          report_id: submittedReportId,
+        })
+      : await supplyControlApi.createSupplyReport(payload);
     if (!result.data) {
-      setSubmitError(result.error || "שליחת הדיווח נכשלה");
+      setSubmitError(result.error || (submittedReportId ? "עדכון הדיווח נכשל" : "שליחת הדיווח נכשלה"));
       setSubmitting(false);
       return;
     }
 
+    setSubmittedReportId(result.data.report.report_id);
+    setIsEditingSubmittedReport(false);
     setSuccessResult(result.data);
     setSubmitting(false);
+  }
+
+  function handleEditSubmittedReport() {
+    setSuccessResult(null);
+    setSubmitError(null);
+    setIsEditingSubmittedReport(true);
   }
 
   if (loading) {
@@ -275,24 +285,17 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
             <div className="space-y-2">
               <h1 className="text-2xl font-bold">הדיווח נשמר בהצלחה</h1>
               <p className="text-sm text-muted-foreground">
-                הדיווח עבור {context.apartment.location} נשמר במערכת.
+                הדיווח עבור הדירה נשמר במערכת.
               </p>
             </div>
-            <div className="grid w-full gap-3 sm:grid-cols-3">
-              <div className="rounded-lg bg-muted/40 p-3 text-right">
-                <div className="text-xs text-muted-foreground">מספר דיווח</div>
-                <div className="mt-1 break-all font-medium">{successResult.report.report_id}</div>
-              </div>
-              <div className="rounded-lg bg-muted/40 p-3 text-right">
-                <div className="text-xs text-muted-foreground">סטטוס</div>
-                <div className="mt-1 font-medium">
-                  {OVERALL_STATUS_LABELS[successResult.report.overall_status || "ok"]}
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/40 p-3 text-right">
-                <div className="text-xs text-muted-foreground">פריטים שנשמרו</div>
-                <div className="mt-1 font-medium">{successResult.items_count}</div>
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleEditSubmittedReport}
+                className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                ערוך דיווח
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -368,7 +371,9 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
       <form className="space-y-6" onSubmit={handleSubmit}>
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle className="text-lg">פרטי דיווח</CardTitle>
+            <CardTitle className="text-lg">
+              {isEditingSubmittedReport ? "עריכת דיווח שנשלח" : "פרטי דיווח"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="flex flex-col gap-2 text-sm">
@@ -486,7 +491,7 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
               disabled={submitting}
               className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "שולח..." : "שלח דיווח"}
+              {submitting ? (submittedReportId ? "מעדכן..." : "שולח...") : submittedReportId ? "עדכן דיווח" : "שלח דיווח"}
             </button>
           </CardContent>
         </Card>

@@ -145,6 +145,9 @@ function doPost(e) {
     if (action === "supply_create_report") {
       return createSupplyReportAction_(payload);
     }
+    if (action === "supply_update_report") {
+      return updateSupplyReportAction_(payload);
+    }
     if (action === "supply_create_apartment") {
       return createSupplyApartmentAction_(payload);
     }
@@ -991,6 +994,84 @@ function createSupplyReportAction_(payload) {
     success: true,
     data: {
       report: normalizeSupplyReportRow_(reportRecord),
+      items_count: reportItems.length,
+    },
+  });
+}
+
+function updateSupplyReportAction_(payload) {
+  const reportId = stringValue_(payload.report_id || payload.reportId);
+  if (!reportId) {
+    throw new Error("Missing supply report ID");
+  }
+
+  const existingReport = findSupplyReportRowById_(reportId);
+  if (!existingReport) {
+    throw new Error("Supply report not found");
+  }
+
+  const apartmentId = stringValue_(payload.apartment_id || payload.apartmentId);
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (stringValue_(existingReport.apartment_id) !== apartmentId) {
+    throw new Error("Supply report does not belong to the provided apartment");
+  }
+
+  const apartment = findSupplyApartmentById_(apartmentId);
+  if (!apartment) {
+    throw new Error("Supply apartment not found");
+  }
+
+  const reporterInitials = stringValue_(payload.reporter_initials || payload.reporterInitials);
+  if (!reporterInitials) {
+    throw new Error("Missing reporter initials");
+  }
+
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  if (rawItems.length === 0) {
+    throw new Error("Missing supply report items");
+  }
+
+  const standardItems = getSupplyStandardItemsData_(apartmentId);
+  const standardItemsById = {};
+  standardItems.forEach(function (item) {
+    standardItemsById[item.standard_item_id] = item;
+  });
+
+  const generalNotes = stringValue_(
+    payload.general_notes !== undefined ? payload.general_notes : payload.generalNotes
+  );
+
+  const reportItems = rawItems.map(function (itemPayload, index) {
+    return buildSupplyReportItemRecord_(itemPayload, {
+      reportId: reportId,
+      apartmentId: apartmentId,
+      standardItemsById: standardItemsById,
+      itemIndex: index,
+    });
+  });
+
+  updateSupplyRowByField_(SUPPLY_SHEETS.REPORTS, "report_id", reportId, {
+    reporter_initials: reporterInitials,
+    general_notes: generalNotes,
+    overall_status: computeSupplyOverallStatus_(reportItems, generalNotes),
+  });
+
+  deleteSupplyRowsByField_(SUPPLY_SHEETS.REPORT_ITEMS, "report_id", reportId);
+  reportItems.forEach(function (itemRecord) {
+    appendSupplyRow_(SUPPLY_SHEETS.REPORT_ITEMS, itemRecord);
+  });
+
+  const updatedReport = findSupplyReportById_(reportId);
+  if (!updatedReport) {
+    throw new Error("Supply report not found after update");
+  }
+
+  return jsonResponse_({
+    success: true,
+    data: {
+      report: updatedReport,
       items_count: reportItems.length,
     },
   });
@@ -2368,6 +2449,26 @@ function updateSupplyRowByField_(sheetName, keyColumn, keyValue, updates) {
   throw new Error("Supply row not found in " + sheetName + ": " + keyValue);
 }
 
+function deleteSupplyRowsByField_(sheetName, keyColumn, keyValue) {
+  const sheet = getSupplySheet_(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) {
+    return;
+  }
+
+  const headers = getSheetHeaders_(sheet);
+  const keyIndex = headers.indexOf(keyColumn);
+  if (keyIndex === -1) {
+    throw new Error("Supply column not found: " + keyColumn + " in " + sheetName);
+  }
+
+  for (var rowIndex = values.length - 1; rowIndex >= 1; rowIndex--) {
+    if (String(values[rowIndex][keyIndex]) === String(keyValue)) {
+      sheet.deleteRow(rowIndex + 1);
+    }
+  }
+}
+
 function buildSupplyApartmentRecord_(payload, existingRecord) {
   const source = existingRecord || {};
   const apartmentId = stringValue_(payload.apartment_id || payload.apartmentId || source.apartment_id) || generateSupplyApartmentId_();
@@ -2715,6 +2816,33 @@ function findSupplyApartmentById_(apartmentId) {
   for (var index = 0; index < apartments.length; index++) {
     if (apartments[index].apartment_id === String(apartmentId)) {
       return apartments[index];
+    }
+  }
+
+  return null;
+}
+
+function findSupplyReportRowById_(reportId) {
+  const rows = getSupplyRows_(SUPPLY_SHEETS.REPORTS, ["report_id", "apartment_id"]);
+
+  for (var index = 0; index < rows.length; index++) {
+    if (stringValue_(rows[index].report_id) === String(reportId)) {
+      return rows[index];
+    }
+  }
+
+  return null;
+}
+
+function findSupplyReportById_(reportId) {
+  const reports = getSupplyRows_(
+    SUPPLY_SHEETS.REPORTS,
+    ["report_id", "apartment_id", "reported_at"]
+  ).map(normalizeSupplyReportRow_);
+
+  for (var index = 0; index < reports.length; index++) {
+    if (reports[index].report_id === String(reportId)) {
+      return reports[index];
     }
   }
 

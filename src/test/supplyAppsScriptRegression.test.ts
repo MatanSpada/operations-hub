@@ -15,6 +15,7 @@ describe("supply Apps Script regression guards", () => {
       "supply_get_report_details",
       "supply_get_reporting_context",
       "supply_create_report",
+      "supply_update_report",
       "supply_create_apartment",
       "supply_update_apartment",
       "supply_deactivate_apartment",
@@ -30,5 +31,11 @@ describe("supply Apps Script regression guards", () => {
   it("defines the header helper used by supply row writes", () => {
     expect(codeGs).toContain("function getSheetHeaders_(sheet)");
     expect(codeGs).toContain("const headers = getSheetHeaders_(sheet);");
+  });
+
+  it("updates reports in place by replacing their report items", () => {
+    expect(codeGs).toContain("function updateSupplyReportAction_(payload)");
+    expect(codeGs).toContain('updateSupplyRowByField_(SUPPLY_SHEETS.REPORTS, "report_id", reportId');
+    expect(codeGs).toContain('deleteSupplyRowsByField_(SUPPLY_SHEETS.REPORT_ITEMS, "report_id", reportId)');
   });
 });

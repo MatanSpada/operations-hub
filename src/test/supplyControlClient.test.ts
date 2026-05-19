@@ -5,6 +5,7 @@ import {
   getSupplyReportingContext,
   createSupplyStandardItem,
   seedSupplyDemoData,
+  updateSupplyReport,
   updateSupplyApartment,
   updateSupplyStandardItem,
 } from "@/modules/apartment-supply-control/api";
@@ -223,6 +224,55 @@ describe("supply control client actions", () => {
           reported_status: "partial",
           actual_value: "10",
           item_notes: "חסרות 3",
+        },
+      ],
+    });
+  });
+
+  it("maps update report payload to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        report: {
+          report_id: "rep-1",
+          apartment_id: "apt-1",
+          reporter_initials: "מ.ש",
+          reported_at: "2026-05-19T09:00:00.000Z",
+          overall_status: "ok",
+        },
+        items_count: 1,
+      },
+    });
+
+    await updateSupplyReport({
+      report_id: "rep-1",
+      apartment_id: "apt-1",
+      reporter_initials: "מ.ש",
+      general_notes: "עודכן",
+      items: [
+        {
+          standard_item_id: "std-1",
+          item_name: "מיטה",
+          required_value: "13",
+          reported_status: "ok",
+          actual_value: "",
+          item_notes: "",
+        },
+      ],
+    });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_update_report", {
+      report_id: "rep-1",
+      apartment_id: "apt-1",
+      reporter_initials: "מ.ש",
+      general_notes: "עודכן",
+      items: [
+        {
+          standard_item_id: "std-1",
+          item_name: "מיטה",
+          required_value: "13",
+          reported_status: "ok",
+          actual_value: "",
+          item_notes: "",
         },
       ],
     });

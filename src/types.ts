@@ -295,6 +295,10 @@ export interface SupplyCreateReportInput {
   items: SupplyReportItemInput[];
 }
 
+export interface SupplyUpdateReportInput extends SupplyCreateReportInput {
+  report_id: string;
+}
+
 export interface SupplyCreateReportResult {
   report: SupplyReport;
   items_count: number;
