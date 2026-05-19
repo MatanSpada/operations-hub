@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Building2, CalendarDays, ClipboardCheck, RefreshCw, TriangleAlert } from "lucide-react";
-import { Pie, PieChart, Cell, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Pie, PieChart, Cell } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { toast } from "@/hooks/use-toast";
@@ -61,6 +61,38 @@ function formatApartmentOptionLabel(apartment: SupplyApartment): string {
 
 function formatPercent(value: number): string {
   return `${value}%`;
+}
+
+function IssueCategoryBars({
+  items,
+}: {
+  items: Array<{ category: string; count: number; fill: string }>;
+}) {
+  const maxCount = Math.max(...items.map((item) => item.count), 1);
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const width = item.count > 0 ? Math.max((item.count / maxCount) * 100, 8) : 0;
+
+        return (
+          <div key={item.category} className="grid grid-cols-[minmax(0,10rem)_1fr_3rem] items-center gap-3">
+            <div className="text-sm font-medium text-foreground">{item.category}</div>
+            <div className="h-3 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-[width]"
+                style={{
+                  width: `${width}%`,
+                  backgroundColor: item.fill,
+                }}
+              />
+            </div>
+            <div className="text-left text-sm font-medium tabular-nums text-foreground">{item.count}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function KpiCard({
@@ -436,26 +468,11 @@ export const ApartmentSupplyDashboard: React.FC<ApartmentSupplyDashboardProps> =
                   <CardHeader>
                     <CardTitle className="text-base">תקלות לפי קטגוריה</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <ChartContainer
-                      config={issueCategoryChartData.reduce<Record<string, { label: string; color: string }>>((result, item) => {
-                        result[item.category] = { label: item.category, color: item.fill };
-                        return result;
-                      }, {})}
-                      className="h-[280px] w-full"
-                    >
-                      <BarChart data={issueCategoryChartData} layout="vertical" margin={{ left: 32, right: 12 }}>
-                        <CartesianGrid horizontal={false} />
-                        <YAxis dataKey="category" type="category" width={110} tickLine={false} axisLine={false} />
-                        <XAxis dataKey="count" type="number" allowDecimals={false} tickLine={false} axisLine={false} />
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="count" radius={8}>
-                          {issueCategoryChartData.map((entry) => (
-                            <Cell key={entry.category} fill={entry.fill} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ChartContainer>
+                  <CardContent className="space-y-4">
+                    <IssueCategoryBars items={issueCategoryChartData} />
+                    <div className="text-xs text-muted-foreground">
+                      מוצגים פריטים שסומנו כ"חסר" או "חלקי" בחודש שנבחר.
+                    </div>
                   </CardContent>
                 </Card>
               </div>

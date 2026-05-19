@@ -194,6 +194,55 @@ describe("ApartmentSupplyFieldReportPage", () => {
     });
   });
 
+  it("shows a clear loading state while submitting a new report", async () => {
+    let resolveReport:
+      | ((value: {
+          data: {
+            report: {
+              report_id: string;
+              apartment_id: string;
+              reporter_initials: string;
+              reported_at: string;
+              overall_status: "ok";
+            };
+            items_count: number;
+          };
+        }) => void)
+      | null = null;
+
+    supplyControlApi.createSupplyReport.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReport = resolve;
+        }),
+    );
+
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("מיטה");
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+
+    expect(await screen.findByRole("button", { name: "שולח דיווח..." })).toBeDisabled();
+
+    resolveReport?.({
+      data: {
+        report: {
+          report_id: "rep-123",
+          apartment_id: apartment.apartment_id,
+          reporter_initials: "מ.ש",
+          reported_at: "2026-05-19T10:00:00.000Z",
+          overall_status: "ok",
+        },
+        items_count: 2,
+      },
+    });
+
+    expect(await screen.findByText("הדיווח נשמר בהצלחה")).toBeInTheDocument();
+  });
+
   it("submits the mapped statuses and shows a success state", async () => {
     render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
 
@@ -350,5 +399,58 @@ describe("ApartmentSupplyFieldReportPage", () => {
         ],
       });
     });
+  });
+
+  it("shows a clear loading state while updating an existing report", async () => {
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("מיטה");
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+    expect(await screen.findByRole("button", { name: "ערוך דיווח" })).toBeInTheDocument();
+
+    let resolveUpdate:
+      | ((value: {
+          data: {
+            report: {
+              report_id: string;
+              apartment_id: string;
+              reporter_initials: string;
+              reported_at: string;
+              overall_status: "ok";
+            };
+            items_count: number;
+          };
+        }) => void)
+      | null = null;
+
+    supplyControlApi.updateSupplyReport.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "ערוך דיווח" }));
+    fireEvent.click(screen.getByRole("button", { name: "עדכן דיווח" }));
+
+    expect(await screen.findByRole("button", { name: "מעדכן דיווח..." })).toBeDisabled();
+
+    resolveUpdate?.({
+      data: {
+        report: {
+          report_id: "rep-123",
+          apartment_id: apartment.apartment_id,
+          reporter_initials: "מ.ש",
+          reported_at: "2026-05-19T10:00:00.000Z",
+          overall_status: "ok",
+        },
+        items_count: 2,
+      },
+    });
+
+    expect(await screen.findByText("הדיווח נשמר בהצלחה")).toBeInTheDocument();
   });
 });

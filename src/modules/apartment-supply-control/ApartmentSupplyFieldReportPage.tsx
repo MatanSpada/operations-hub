@@ -710,7 +710,16 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
               disabled={submitting}
               className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? (submittedReportId ? "מעדכן..." : "שולח...") : submittedReportId ? "עדכן דיווח" : "שלח דיווח"}
+              {submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>{submittedReportId ? "מעדכן דיווח..." : "שולח דיווח..."}</span>
+                </span>
+              ) : submittedReportId ? (
+                "עדכן דיווח"
+              ) : (
+                "שלח דיווח"
+              )}
             </button>
           </CardContent>
         </Card>

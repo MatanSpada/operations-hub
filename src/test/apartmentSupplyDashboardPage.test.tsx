@@ -158,6 +158,7 @@ describe("ApartmentSupplyControlPage dashboard", () => {
     expect(screen.getByText("0%")).toBeInTheDocument();
     expect(screen.getByText("התפלגות סטטוסים")).toBeInTheDocument();
     expect(screen.getByText("תקלות לפי קטגוריה")).toBeInTheDocument();
+    expect(screen.getByText("מוצגים פריטים שסומנו כ\"חסר\" או \"חלקי\" בחודש שנבחר.")).toBeInTheDocument();
     expect(screen.getByText("דיווחים אחרונים")).toBeInTheDocument();
     expect(screen.getAllByText("דירות ללא דיווח החודש").length).toBeGreaterThan(0);
     expect(screen.getByText("גבעה")).toBeInTheDocument();
