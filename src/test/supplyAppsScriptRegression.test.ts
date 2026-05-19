@@ -45,5 +45,6 @@ describe("supply Apps Script regression guards", () => {
     expect(codeGs).toContain("function saveSupplyReportPhoto_(payload, options)");
     expect(codeGs).toContain("appendSupplyRow_(SUPPLY_SHEETS.REPORT_PHOTOS, photoRecord)");
     expect(codeGs).toContain("file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)");
+    expect(codeGs).toContain('return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(String(fileId)) + "&sz=w1800"');
   });
 });

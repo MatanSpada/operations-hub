@@ -107,6 +107,7 @@ describe("ApartmentSupplyControlPage reports", () => {
             report_id: "rep-new",
             apartment_id: "apt_ezri",
             category: "מקרר",
+            drive_file_id: "file-1",
             drive_url: "https://example.com/fridge.jpg",
             uploaded_at: "2026-05-20T10:05:00.000Z",
           },
@@ -158,11 +159,15 @@ describe("ApartmentSupplyControlPage reports", () => {
     fireEvent.click(reportButtons[0]);
 
     const thumbnail = await screen.findByAltText("מקרר 1");
+    expect(thumbnail).toHaveAttribute("src", "https://drive.google.com/thumbnail?id=file-1&sz=w720");
     expect(screen.getAllByText("לא צורפו תמונות לקטגוריה זו").length).toBeGreaterThan(0);
 
     fireEvent.click(thumbnail);
     expect(await screen.findByRole("heading", { name: "תצוגת תמונה" })).toBeInTheDocument();
-    expect(screen.getByAltText("תמונה 1")).toBeInTheDocument();
+    expect(screen.getByAltText("תמונה 1")).toHaveAttribute(
+      "src",
+      "https://drive.google.com/thumbnail?id=file-1&sz=w1800",
+    );
 
     const closeButtons = screen.getAllByRole("button", { name: "סגור" });
     fireEvent.click(closeButtons[closeButtons.length - 1]);

@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supplyControlApi } from "@/modules/apartment-supply-control/api";
+import { getSupplyPhotoDisplayUrl } from "@/modules/apartment-supply-control/normalize";
 import {
   SupplyApartment,
   SupplyApartmentInput,
@@ -1126,7 +1127,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                             className="overflow-hidden rounded-xl border border-border text-right transition-colors hover:bg-muted/20"
                           >
                             <img
-                              src={photo.drive_url}
+                              src={getSupplyPhotoDisplayUrl(photo, 720)}
                               alt={`${category} ${index + 1}`}
                               className="h-36 w-full object-cover"
                             />
@@ -1157,7 +1158,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
         {lightboxPhotos.length > 0 && (
           <div className="space-y-4">
             <img
-              src={lightboxPhotos[lightboxIndex]?.drive_url}
+              src={getSupplyPhotoDisplayUrl(lightboxPhotos[lightboxIndex], 1800)}
               alt={`תמונה ${lightboxIndex + 1}`}
               className="max-h-[70vh] w-full rounded-lg object-contain"
             />

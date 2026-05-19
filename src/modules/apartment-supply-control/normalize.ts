@@ -187,6 +187,17 @@ export function normalizeSupplyReportPhoto(row: RawRow): SupplyReportPhoto {
   };
 }
 
+export function buildSupplyPhotoDisplayUrl(driveFileId: string, size = 1600): string {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w${Math.max(200, Math.floor(size))}`;
+}
+
+export function getSupplyPhotoDisplayUrl(photo: SupplyReportPhoto, size = 1600): string | undefined {
+  if (photo.drive_file_id) {
+    return buildSupplyPhotoDisplayUrl(photo.drive_file_id, size);
+  }
+  return photo.drive_url;
+}
+
 export function normalizeSupplyReportPhotos(rows: unknown): SupplyReportPhoto[] {
   return asRows(rows).map(normalizeSupplyReportPhoto);
 }

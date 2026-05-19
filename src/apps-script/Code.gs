@@ -3231,7 +3231,7 @@ function sanitizeDriveFolderName_(value) {
 }
 
 function buildSupplyDriveViewUrl_(fileId) {
-  return "https://drive.google.com/uc?export=view&id=" + encodeURIComponent(String(fileId));
+  return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(String(fileId)) + "&sz=w1800";
 }
 
 function getScriptPropertyWithFallback_(propertyName, fallbackValue) {

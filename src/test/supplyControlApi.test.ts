@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSupplyPhotoDisplayUrl,
+  getSupplyPhotoDisplayUrl,
   isSupplyRowActive,
   mapSheetRowsByHeaders,
   normalizeSupplyReportDetails,
@@ -109,5 +111,24 @@ describe("apartment supply control normalization", () => {
     expect(details?.apartment.location).toBe("קומה 2");
     expect(details?.items[0].reported_status).toBe("ok");
     expect(details?.photos[0].category).toBe("מקרר");
+  });
+
+  it("builds a browser-safe Drive image URL from drive_file_id", () => {
+    expect(buildSupplyPhotoDisplayUrl("file 123", 900)).toBe(
+      "https://drive.google.com/thumbnail?id=file%20123&sz=w900",
+    );
+  });
+
+  it("prefers drive_file_id over stored drive_url for photo display", () => {
+    expect(
+      getSupplyPhotoDisplayUrl({
+        photo_id: "photo-1",
+        report_id: "rep-1",
+        apartment_id: "apt-1",
+        category: "מקרר",
+        drive_file_id: "file-1",
+        drive_url: "https://example.com/broken.jpg",
+      }),
+    ).toBe("https://drive.google.com/thumbnail?id=file-1&sz=w1600");
   });
 });
