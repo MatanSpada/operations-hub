@@ -5,6 +5,7 @@ import {
   getSupplyReportDetails,
   getSupplyReportsByApartment,
   getSupplyReportingContext,
+  uploadSupplyReportPhotos,
   createSupplyStandardItem,
   seedSupplyDemoData,
   updateSupplyReport,
@@ -318,6 +319,50 @@ describe("supply control client actions", () => {
 
     expect(postActionDetailed).toHaveBeenCalledWith("supply_get_report_details", {
       reportId: "rep-1",
+    });
+  });
+
+  it("maps upload report photos payload to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: [
+        {
+          photo_id: "photo-1",
+          report_id: "rep-1",
+          apartment_id: "apt-1",
+          category: "מקרר",
+          drive_file_id: "file-1",
+          drive_url: "https://drive.google.com/uc?export=view&id=file-1",
+          uploaded_at: "2026-05-20T10:00:00.000Z",
+        },
+      ],
+    });
+
+    await uploadSupplyReportPhotos({
+      report_id: "rep-1",
+      apartment_id: "apt-1",
+      photos: [
+        {
+          category: "מקרר",
+          filename: "fridge.jpg",
+          mime_type: "image/jpeg",
+          base64_data: "ZmFrZQ==",
+          notes: "",
+        },
+      ],
+    });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_upload_report_photos", {
+      report_id: "rep-1",
+      apartment_id: "apt-1",
+      photos: [
+        {
+          category: "מקרר",
+          filename: "fridge.jpg",
+          mime_type: "image/jpeg",
+          base64_data: "ZmFrZQ==",
+          notes: "",
+        },
+      ],
     });
   });
 });

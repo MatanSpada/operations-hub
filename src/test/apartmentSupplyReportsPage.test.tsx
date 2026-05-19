@@ -101,7 +101,16 @@ describe("ApartmentSupplyControlPage reports", () => {
             item_notes: "חסרה מיטה",
           },
         ],
-        photos: [],
+        photos: [
+          {
+            photo_id: "photo-1",
+            report_id: "rep-new",
+            apartment_id: "apt_ezri",
+            category: "מקרר",
+            drive_url: "https://example.com/fridge.jpg",
+            uploaded_at: "2026-05-20T10:05:00.000Z",
+          },
+        ],
       },
     });
   });
@@ -136,8 +145,30 @@ describe("ApartmentSupplyControlPage reports", () => {
     expect(await screen.findByRole("heading", { name: "דוח בקרת אספקה" })).toBeInTheDocument();
     expect(screen.getByText("הערות / תקלות שנצפו")).toBeInTheDocument();
     expect(screen.getByText("צ׳ק ליסט אספקה")).toBeInTheDocument();
+    expect(screen.getByText("תמונות מהדיווח")).toBeInTheDocument();
     expect(screen.getByText("חסרה מיטה")).toBeInTheDocument();
     expect(screen.getByText("חסר")).toBeInTheDocument();
+  });
+
+  it("groups photos by category and opens/closes the lightbox", async () => {
+    render(<ApartmentSupplyControlPage initialSection="reports" />);
+
+    await screen.findByText("מ.ש");
+    const reportButtons = screen.getAllByRole("button").filter((button) => button.textContent?.includes("מ.ש"));
+    fireEvent.click(reportButtons[0]);
+
+    const thumbnail = await screen.findByAltText("מקרר 1");
+    expect(screen.getAllByText("לא צורפו תמונות לקטגוריה זו").length).toBeGreaterThan(0);
+
+    fireEvent.click(thumbnail);
+    expect(await screen.findByRole("heading", { name: "תצוגת תמונה" })).toBeInTheDocument();
+    expect(screen.getByAltText("תמונה 1")).toBeInTheDocument();
+
+    const closeButtons = screen.getAllByRole("button", { name: "סגור" });
+    fireEvent.click(closeButtons[closeButtons.length - 1]);
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "תצוגת תמונה" })).not.toBeInTheDocument();
+    });
   });
 
   it("supports pagination with 30 reports per page", async () => {

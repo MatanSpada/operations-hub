@@ -49,6 +49,7 @@ export const Modal: React.FC<ModalProps> = ({
           <h3 className="min-w-0 text-base font-semibold text-foreground">{title}</h3>
           <button
             onClick={onClose}
+            aria-label="סגור"
             className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <X size={18} />

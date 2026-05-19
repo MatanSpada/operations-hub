@@ -11,7 +11,9 @@ import {
   SupplyReportsQueryOptions,
   SupplyStandardItemInput,
   SupplyStandardItem,
+  SupplyReportPhoto,
   SupplyUpdateReportInput,
+  SupplyUploadReportPhotosInput,
 } from "@/types";
 import {
   normalizeSupplyCreateReportResult,
@@ -19,6 +21,7 @@ import {
   normalizeSupplyApartments,
   normalizeSupplyReportingContext,
   normalizeSupplyReportDetails,
+  normalizeSupplyReportPhotos,
   normalizeSupplyReportsByApartment,
   normalizeSupplyStandardItems,
 } from "@/modules/apartment-supply-control/normalize";
@@ -129,6 +132,17 @@ export async function updateSupplyReport(
   return { data: reportResult };
 }
 
+export async function uploadSupplyReportPhotos(
+  input: SupplyUploadReportPhotosInput,
+): Promise<ApiActionResult<SupplyReportPhoto[]>> {
+  const result = await postActionDetailed<unknown[]>("supply_upload_report_photos", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to upload supply report photos");
+
+  return {
+    data: normalizeSupplyReportPhotos(result.data),
+  };
+}
+
 export async function createSupplyApartment(
   input: SupplyApartmentInput,
 ): Promise<ApiActionResult<SupplyApartment>> {
@@ -230,6 +244,7 @@ export const supplyControlApi = {
   getSupplyReportingContext,
   createSupplyReport,
   updateSupplyReport,
+  uploadSupplyReportPhotos,
   createSupplyApartment,
   updateSupplyApartment,
   deactivateSupplyApartment,

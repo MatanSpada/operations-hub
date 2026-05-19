@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Building2, CheckCircle2, ClipboardCheck, Loader2 } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Building2, CheckCircle2, ClipboardCheck, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { supplyControlApi } from "@/modules/apartment-supply-control/api";
@@ -7,18 +7,28 @@ import {
   SupplyApartment,
   SupplyCreateReportInput,
   SupplyCreateReportResult,
+  SupplyPhotoCategory,
   SupplyReportedStatus,
   SupplyReportingContext,
   SupplyReportingContextParams,
   SupplyRequiredType,
   SupplyStandardItem,
   SupplyUpdateReportInput,
+  SupplyUploadReportPhotoInput,
 } from "@/types";
 
 type ReportItemFormState = {
   reported_status: SupplyReportedStatus;
   actual_value: string;
   item_notes: string;
+};
+
+type PendingPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  category: SupplyPhotoCategory;
+  notes: string;
 };
 
 type FieldReportPageProps = SupplyReportingContextParams;
@@ -36,7 +46,9 @@ const STATUS_OPTIONS: Array<{ value: SupplyReportedStatus; label: string }> = [
   { value: "not_relevant", label: "לא רלוונטי" },
 ];
 
+const PHOTO_CATEGORIES: SupplyPhotoCategory[] = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים"];
 const CATEGORY_ORDER = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי"] as const;
+const MAX_PHOTO_SIZE_BYTES = 8 * 1024 * 1024;
 
 function buildInitialItemStates(items: SupplyStandardItem[]): Record<string, ReportItemFormState> {
   return items.reduce<Record<string, ReportItemFormState>>((result, item) => {
@@ -47,6 +59,15 @@ function buildInitialItemStates(items: SupplyStandardItem[]): Record<string, Rep
     };
     return result;
   }, {});
+}
+
+function buildInitialPendingPhotos(): Record<SupplyPhotoCategory, PendingPhoto[]> {
+  return {
+    מקרר: [],
+    "ציוד ניקוי אקסטרה": [],
+    מצעים: [],
+    חריגים: [],
+  };
 }
 
 function formatRequiredValue(item: SupplyStandardItem): string {
@@ -71,6 +92,49 @@ function groupItemsByCategory(items: SupplyStandardItem[]) {
     if (rightIndex === -1) return -1;
     return leftIndex - rightIndex;
   });
+}
+
+function revokePendingPhotos(photosByCategory: Record<SupplyPhotoCategory, PendingPhoto[]>) {
+  PHOTO_CATEGORIES.forEach((category) => {
+    photosByCategory[category].forEach((photo) => {
+      URL.revokeObjectURL(photo.previewUrl);
+    });
+  });
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const [, base64Data = ""] = result.split(",");
+      resolve(base64Data);
+    };
+    reader.onerror = () => {
+      reject(new Error(`קריאת הקובץ נכשלה: ${file.name}`));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function buildPhotoUploadPayload(
+  photosByCategory: Record<SupplyPhotoCategory, PendingPhoto[]>,
+): Promise<SupplyUploadReportPhotoInput[]> {
+  const uploadedPhotos: SupplyUploadReportPhotoInput[] = [];
+
+  for (const category of PHOTO_CATEGORIES) {
+    for (const photo of photosByCategory[category]) {
+      uploadedPhotos.push({
+        category,
+        filename: photo.file.name,
+        mime_type: photo.file.type,
+        base64_data: await readFileAsBase64(photo.file),
+        notes: photo.notes,
+      });
+    }
+  }
+
+  return uploadedPhotos;
 }
 
 function ApartmentIdentity({ apartment }: { apartment: SupplyApartment }) {
@@ -119,11 +183,24 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
   const [successResult, setSuccessResult] = useState<SupplyCreateReportResult | null>(null);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [isEditingSubmittedReport, setIsEditingSubmittedReport] = useState(false);
+  const [pendingPhotos, setPendingPhotos] = useState<Record<SupplyPhotoCategory, PendingPhoto[]>>(buildInitialPendingPhotos());
+  const pendingPhotosRef = useRef(pendingPhotos);
 
   const groupedItems = useMemo(
     () => groupItemsByCategory(context?.standardItems || []),
     [context],
   );
+
+  useEffect(() => {
+    pendingPhotosRef.current = pendingPhotos;
+  }, [pendingPhotos]);
+
+  const clearPendingPhotos = useCallback(() => {
+    revokePendingPhotos(pendingPhotosRef.current);
+    const emptyState = buildInitialPendingPhotos();
+    pendingPhotosRef.current = emptyState;
+    setPendingPhotos(emptyState);
+  }, []);
 
   const loadApartmentOptions = useCallback(async () => {
     setLoadingApartments(true);
@@ -153,10 +230,11 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     setContext(result.data);
     setSelectedApartmentId(result.data.apartment.apartment_id);
     setItemStates(buildInitialItemStates(result.data.standardItems));
+    clearPendingPhotos();
     setSubmittedReportId(null);
     setIsEditingSubmittedReport(false);
     setLoading(false);
-  }, [loadApartmentOptions]);
+  }, [clearPendingPhotos, loadApartmentOptions]);
 
   useEffect(() => {
     const hasIdentifier = Boolean(apartmentId || reportToken);
@@ -168,6 +246,12 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     setLoading(false);
     void loadApartmentOptions();
   }, [apartmentId, loadApartmentOptions, loadReportingContext, reportToken]);
+
+  useEffect(() => {
+    return () => {
+      revokePendingPhotos(pendingPhotosRef.current);
+    };
+  }, []);
 
   function updateItemState(standardItemId: string, nextState: Partial<ReportItemFormState>) {
     setItemStates((current) => ({
@@ -241,28 +325,99 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     };
 
     setSubmitting(true);
-    const result = submittedReportId
-      ? await supplyControlApi.updateSupplyReport({
-          ...(payload as SupplyUpdateReportInput),
-          report_id: submittedReportId,
-        })
-      : await supplyControlApi.createSupplyReport(payload);
-    if (!result.data) {
-      setSubmitError(result.error || (submittedReportId ? "עדכון הדיווח נכשל" : "שליחת הדיווח נכשלה"));
-      setSubmitting(false);
-      return;
-    }
 
-    setSubmittedReportId(result.data.report.report_id);
-    setIsEditingSubmittedReport(false);
-    setSuccessResult(result.data);
-    setSubmitting(false);
+    try {
+      const result = submittedReportId
+        ? await supplyControlApi.updateSupplyReport({
+            ...(payload as SupplyUpdateReportInput),
+            report_id: submittedReportId,
+          })
+        : await supplyControlApi.createSupplyReport(payload);
+      if (!result.data) {
+        setSubmitError(result.error || (submittedReportId ? "עדכון הדיווח נכשל" : "שליחת הדיווח נכשלה"));
+        setSubmitting(false);
+        return;
+      }
+
+      const uploadedPhotoPayload = await buildPhotoUploadPayload(pendingPhotosRef.current);
+      if (uploadedPhotoPayload.length > 0) {
+        const photosResult = await supplyControlApi.uploadSupplyReportPhotos({
+          report_id: result.data.report.report_id,
+          apartment_id: context.apartment.apartment_id,
+          photos: uploadedPhotoPayload,
+        });
+
+        if (!photosResult.data) {
+          setSubmittedReportId(result.data.report.report_id);
+          setIsEditingSubmittedReport(true);
+          setSubmitError(`הדיווח נשמר אך העלאת התמונות נכשלה: ${photosResult.error || "שגיאה לא ידועה"}`);
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      setSubmittedReportId(result.data.report.report_id);
+      setIsEditingSubmittedReport(false);
+      setSuccessResult(result.data);
+      clearPendingPhotos();
+      setSubmitting(false);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "שליחת הדיווח נכשלה");
+      setSubmitting(false);
+    }
   }
 
   function handleEditSubmittedReport() {
     setSuccessResult(null);
     setSubmitError(null);
     setIsEditingSubmittedReport(true);
+  }
+
+  function handlePhotoSelection(category: SupplyPhotoCategory, files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    setSubmitError(null);
+
+    const nextPhotos: PendingPhoto[] = [];
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) {
+        setSubmitError(`הקובץ ${file.name} אינו קובץ תמונה נתמך`);
+        return;
+      }
+      if (file.size > MAX_PHOTO_SIZE_BYTES) {
+        setSubmitError(`הקובץ ${file.name} גדול מדי. גודל מקסימלי: 8MB`);
+        return;
+      }
+
+      nextPhotos.push({
+        id: `${category}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        category,
+        notes: "",
+      });
+    }
+
+    setPendingPhotos((current) => ({
+      ...current,
+      [category]: [...current[category], ...nextPhotos],
+    }));
+  }
+
+  function removePendingPhoto(category: SupplyPhotoCategory, photoId: string) {
+    setPendingPhotos((current) => {
+      const photo = current[category].find((item) => item.id === photoId);
+      if (photo) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+
+      return {
+        ...current,
+        [category]: current[category].filter((item) => item.id !== photoId),
+      };
+    });
   }
 
   if (loading) {
@@ -463,6 +618,70 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
             </CardContent>
           </Card>
         ))}
+
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="text-lg">תמונות מהדיווח</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              ניתן לצרף תמונות להוכחת מילוי האספקה
+            </div>
+
+            {PHOTO_CATEGORIES.map((category) => (
+              <div key={category} className="space-y-3 rounded-xl border border-border p-4">
+                <div className="flex items-center gap-2">
+                  <ImagePlus size={16} className="text-muted-foreground" />
+                  <div className="font-medium text-foreground">{category}</div>
+                </div>
+
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/10 px-4 py-6 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/20">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      handlePhotoSelection(category, event.target.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <span>בחר תמונות או צלם מהטלפון</span>
+                  <span className="text-xs">אפשר לצרף כמה תמונות לכל קטגוריה</span>
+                </label>
+
+                {pendingPhotos[category].length === 0 ? (
+                  <div className="text-sm text-muted-foreground">לא נבחרו תמונות לקטגוריה זו</div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {pendingPhotos[category].map((photo) => (
+                      <div key={photo.id} className="overflow-hidden rounded-lg border border-border bg-card">
+                        <img
+                          src={photo.previewUrl}
+                          alt={`${category} ${photo.file.name}`}
+                          className="h-36 w-full object-cover"
+                        />
+                        <div className="flex items-center justify-between gap-3 px-3 py-2">
+                          <div className="min-w-0 text-xs text-muted-foreground">
+                            <div className="truncate">{photo.file.name}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePendingPhoto(category, photo.id)}
+                            className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-status-danger-text hover:bg-destructive/5"
+                          >
+                            <Trash2 size={12} />
+                            הסר
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         <Card className="shadow-card">
           <CardHeader>

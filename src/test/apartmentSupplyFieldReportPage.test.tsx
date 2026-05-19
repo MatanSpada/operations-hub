@@ -8,6 +8,7 @@ const { supplyControlApi } = vi.hoisted(() => ({
     getSupplyReportingContext: vi.fn(),
     createSupplyReport: vi.fn(),
     updateSupplyReport: vi.fn(),
+    uploadSupplyReportPhotos: vi.fn(),
     getSupplyApartments: vi.fn(),
   },
 }));
@@ -49,6 +50,23 @@ const standardItems: SupplyStandardItem[] = [
   },
 ];
 
+class MockFileReader {
+  result: string | null = null;
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => void) | null = null;
+  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => void) | null = null;
+
+  readAsDataURL() {
+    this.result = "data:image/jpeg;base64,ZmFrZQ==";
+    this.onload?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>);
+  }
+}
+
+vi.stubGlobal("FileReader", MockFileReader);
+vi.stubGlobal("URL", {
+  createObjectURL: vi.fn(() => "blob:preview-url"),
+  revokeObjectURL: vi.fn(),
+});
+
 describe("ApartmentSupplyFieldReportPage", () => {
   beforeEach(() => {
     Object.values(supplyControlApi).forEach((fn) => fn.mockReset());
@@ -83,6 +101,19 @@ describe("ApartmentSupplyFieldReportPage", () => {
         items_count: 2,
       },
     });
+    supplyControlApi.uploadSupplyReportPhotos.mockResolvedValue({
+      data: [
+        {
+          photo_id: "photo-1",
+          report_id: "rep-123",
+          apartment_id: apartment.apartment_id,
+          category: "מקרר",
+          drive_file_id: "file-1",
+          drive_url: "https://drive.google.com/uc?export=view&id=file-1",
+          uploaded_at: "2026-05-20T10:00:00.000Z",
+        },
+      ],
+    });
   });
 
   it("renders apartment details and standard items from the reporting context", async () => {
@@ -113,6 +144,54 @@ describe("ApartmentSupplyFieldReportPage", () => {
     fireEvent.click(within(bedContainer as HTMLElement).getByRole("button", { name: "חלקי" }));
 
     expect(await screen.findByText("מה נמצא בפועל?")).toBeInTheDocument();
+  });
+
+  it("renders photo upload categories, shows preview, and allows removing a selected image", async () => {
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("תמונות מהדיווח");
+    expect(screen.getAllByText("מקרר").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ציוד ניקוי אקסטרה").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מצעים").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("חריגים").length).toBeGreaterThan(0);
+
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByAltText("מקרר fridge.jpg")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "הסר" }));
+    expect(screen.queryByAltText("מקרר fridge.jpg")).not.toBeInTheDocument();
+  });
+
+  it("uploads selected photos after creating a report", async () => {
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("מיטה");
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+
+    await waitFor(() => {
+      expect(supplyControlApi.uploadSupplyReportPhotos).toHaveBeenCalledWith({
+        report_id: "rep-123",
+        apartment_id: "apt_ezri",
+        photos: [
+          {
+            category: "מקרר",
+            filename: "fridge.jpg",
+            mime_type: "image/jpeg",
+            base64_data: "ZmFrZQ==",
+            notes: "",
+          },
+        ],
+      });
+    });
   });
 
   it("submits the mapped statuses and shows a success state", async () => {
@@ -237,5 +316,39 @@ describe("ApartmentSupplyFieldReportPage", () => {
 
     expect(supplyControlApi.createSupplyReport).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("הדיווח נשמר בהצלחה")).toBeInTheDocument();
+  });
+
+  it("uploads newly selected photos after updating an existing report", async () => {
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("מיטה");
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+    expect(await screen.findByRole("button", { name: "ערוך דיווח" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "ערוך דיווח" }));
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "extra.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "עדכן דיווח" }));
+
+    await waitFor(() => {
+      expect(supplyControlApi.updateSupplyReport).toHaveBeenCalled();
+      expect(supplyControlApi.uploadSupplyReportPhotos).toHaveBeenLastCalledWith({
+        report_id: "rep-123",
+        apartment_id: "apt_ezri",
+        photos: [
+          {
+            category: "מקרר",
+            filename: "extra.jpg",
+            mime_type: "image/jpeg",
+            base64_data: "ZmFrZQ==",
+            notes: "",
+          },
+        ],
+      });
+    });
   });
 });

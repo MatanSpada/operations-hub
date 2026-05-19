@@ -148,6 +148,9 @@ function doPost(e) {
     if (action === "supply_update_report") {
       return updateSupplyReportAction_(payload);
     }
+    if (action === "supply_upload_report_photos") {
+      return uploadSupplyReportPhotosAction_(payload);
+    }
     if (action === "supply_create_apartment") {
       return createSupplyApartmentAction_(payload);
     }
@@ -1074,6 +1077,53 @@ function updateSupplyReportAction_(payload) {
       report: updatedReport,
       items_count: reportItems.length,
     },
+  });
+}
+
+function uploadSupplyReportPhotosAction_(payload) {
+  const reportId = stringValue_(payload.report_id || payload.reportId);
+  if (!reportId) {
+    throw new Error("Missing supply report ID");
+  }
+
+  const existingReport = findSupplyReportRowById_(reportId);
+  if (!existingReport) {
+    throw new Error("Supply report not found");
+  }
+
+  const apartmentId = stringValue_(payload.apartment_id || payload.apartmentId);
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (stringValue_(existingReport.apartment_id) !== apartmentId) {
+    throw new Error("Supply report does not belong to the provided apartment");
+  }
+
+  const apartment = findSupplyApartmentById_(apartmentId);
+  if (!apartment) {
+    throw new Error("Supply apartment not found");
+  }
+
+  const photos = Array.isArray(payload.photos) ? payload.photos : [];
+  if (photos.length === 0) {
+    return jsonResponse_({
+      success: true,
+      data: [],
+    });
+  }
+
+  const reportFolder = getSupplyReportFolder_(apartmentId, reportId);
+  const uploadedPhotos = photos.map(function (photoPayload) {
+    return saveSupplyReportPhoto_(photoPayload, {
+      reportId: reportId,
+      apartmentId: apartmentId,
+      reportFolder: reportFolder,
+    });
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: uploadedPhotos,
   });
 }
 
@@ -2579,6 +2629,10 @@ function generateSupplyReportItemId_(reportId, standardItemId, itemIndex) {
   return "rpt_item_" + String(reportId || "rep").slice(0, 24) + "_" + normalizedItemId + "_" + Number(itemIndex || 0);
 }
 
+function generateSupplyPhotoId_() {
+  return "photo_" + new Date().getTime() + "_" + Math.floor(Math.random() * 10000);
+}
+
 function nowIsoString_() {
   return new Date().toISOString();
 }
@@ -2954,6 +3008,47 @@ function buildSupplyReportItemRecord_(payload, options) {
   };
 }
 
+function saveSupplyReportPhoto_(payload, options) {
+  const category = stringValue_(payload.category);
+  if (!isAllowedSupplyPhotoCategory_(category)) {
+    throw new Error("Invalid supply photo category");
+  }
+
+  const filename = stringValue_(payload.filename) || ("photo_" + new Date().getTime() + ".jpg");
+  const mimeType = stringValue_(payload.mime_type || payload.mimeType);
+  if (!mimeType || mimeType.indexOf("image/") !== 0) {
+    throw new Error("Invalid supply photo MIME type");
+  }
+
+  const base64Data = stringValue_(payload.base64_data || payload.base64Data);
+  if (!base64Data) {
+    throw new Error("Missing supply photo data");
+  }
+
+  const categoryFolder = getOrCreateDriveFolder_(
+    options.reportFolder,
+    sanitizeDriveFolderName_(category)
+  );
+  const bytes = Utilities.base64Decode(base64Data);
+  const blob = Utilities.newBlob(bytes, mimeType, filename);
+  const file = categoryFolder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  const photoRecord = {
+    photo_id: generateSupplyPhotoId_(),
+    report_id: options.reportId,
+    apartment_id: options.apartmentId,
+    category: category,
+    drive_file_id: file.getId(),
+    drive_url: buildSupplyDriveViewUrl_(file.getId()),
+    uploaded_at: nowIsoString_(),
+    notes: stringValue_(payload.notes),
+  };
+
+  appendSupplyRow_(SUPPLY_SHEETS.REPORT_PHOTOS, photoRecord);
+  return normalizeSupplyReportPhotoRow_(photoRecord);
+}
+
 function computeSupplyOverallStatus_(items, generalNotes) {
   const hasMissing = items.some(function (item) {
     return item.reported_status === "missing";
@@ -3011,6 +3106,11 @@ function normalizeSupplyPhotoCategory_(value) {
   return normalized === "מקרר" || normalized === "ציוד ניקוי אקסטרה" || normalized === "מצעים" || normalized === "חריגים"
     ? normalized
     : "חריגים";
+}
+
+function isAllowedSupplyPhotoCategory_(value) {
+  const normalized = stringValue_(value);
+  return normalized === "מקרר" || normalized === "ציוד ניקוי אקסטרה" || normalized === "מצעים" || normalized === "חריגים";
 }
 
 function parseSupplyActiveValue_(value) {
@@ -3090,6 +3190,48 @@ function getSupplyReportsFolderId_() {
     SUPPLY_CONFIG.REPORTS_FOLDER_ID_PROPERTY,
     SUPPLY_CONFIG.DEFAULT_REPORTS_FOLDER_ID
   );
+}
+
+function getSupplyReportsFolder_() {
+  const folderId = getSupplyReportsFolderId_();
+  if (!folderId) {
+    throw new Error("Missing supply reports folder ID");
+  }
+
+  try {
+    return DriveApp.getFolderById(folderId);
+  } catch (err) {
+    throw new Error("Unable to open supply reports folder: " + folderId + ". " + String(err));
+  }
+}
+
+function getSupplyReportFolder_(apartmentId, reportId) {
+  const rootFolder = getSupplyReportsFolder_();
+  const apartmentFolder = getOrCreateDriveFolder_(
+    rootFolder,
+    "apartment_" + sanitizeDriveFolderName_(apartmentId)
+  );
+
+  return getOrCreateDriveFolder_(
+    apartmentFolder,
+    "report_" + sanitizeDriveFolderName_(reportId)
+  );
+}
+
+function getOrCreateDriveFolder_(parentFolder, folderName) {
+  const matchingFolders = parentFolder.getFoldersByName(folderName);
+  if (matchingFolders.hasNext()) {
+    return matchingFolders.next();
+  }
+  return parentFolder.createFolder(folderName);
+}
+
+function sanitizeDriveFolderName_(value) {
+  return stringValue_(value).replace(/[\\/:*?"<>|]/g, "_") || "unnamed";
+}
+
+function buildSupplyDriveViewUrl_(fileId) {
+  return "https://drive.google.com/uc?export=view&id=" + encodeURIComponent(String(fileId));
 }
 
 function getScriptPropertyWithFallback_(propertyName, fallbackValue) {

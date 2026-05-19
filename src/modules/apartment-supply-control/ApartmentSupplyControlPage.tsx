@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Image as ImageIcon,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -24,8 +25,10 @@ import { supplyControlApi } from "@/modules/apartment-supply-control/api";
 import {
   SupplyApartment,
   SupplyApartmentInput,
+  SupplyPhotoCategory,
   SupplyReport,
   SupplyReportDetails,
+  SupplyReportPhoto,
   SupplyRequiredType,
   SupplyReportedStatus,
   SupplyStandardItem,
@@ -66,6 +69,7 @@ const REPORTED_STATUS_LABELS: Record<SupplyReportedStatus, string> = {
   partial: "חלקי",
   not_relevant: "לא רלוונטי",
 };
+const PHOTO_CATEGORY_ORDER: SupplyPhotoCategory[] = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים"];
 
 const CATEGORY_OPTIONS = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי"] as const;
 
@@ -125,6 +129,13 @@ function groupReportItemsByCategory(
   });
 
   return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right, "he"));
+}
+
+function groupReportPhotosByCategory(photos: SupplyReportPhoto[]) {
+  return PHOTO_CATEGORY_ORDER.map((category) => ({
+    category,
+    photos: photos.filter((photo) => photo.category === category),
+  }));
 }
 
 function ApartmentCard({
@@ -205,6 +216,8 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
   const [selectedReportDetails, setSelectedReportDetails] = useState<SupplyReportDetails | null>(null);
   const [reportDetailsLoading, setReportDetailsLoading] = useState(false);
   const [reportDetailsError, setReportDetailsError] = useState<string | null>(null);
+  const [lightboxPhotos, setLightboxPhotos] = useState<SupplyReportPhoto[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   const filteredApartments = useMemo(() => {
     const normalizedSearch = search.trim();
@@ -361,6 +374,11 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       })),
     });
     setReportDetailsLoading(false);
+  }
+
+  function openPhotoLightbox(photos: SupplyReportPhoto[], index: number) {
+    setLightboxPhotos(photos);
+    setLightboxIndex(index);
   }
 
   useEffect(() => {
@@ -1082,6 +1100,90 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                 ))}
               </CardContent>
             </Card>
+
+            <Card className="shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base">תמונות מהדיווח</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {groupReportPhotosByCategory(selectedReportDetails.photos).map(({ category, photos }) => (
+                  <div key={category} className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <ImageIcon size={16} />
+                      <span>{category}</span>
+                    </div>
+                    {photos.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                        לא צורפו תמונות לקטגוריה זו
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {photos.map((photo, index) => (
+                          <button
+                            key={photo.photo_id}
+                            type="button"
+                            onClick={() => openPhotoLightbox(photos, index)}
+                            className="overflow-hidden rounded-xl border border-border text-right transition-colors hover:bg-muted/20"
+                          >
+                            <img
+                              src={photo.drive_url}
+                              alt={`${category} ${index + 1}`}
+                              className="h-36 w-full object-cover"
+                            />
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
+                              {formatSupplyReportDateTime(photo.uploaded_at)}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={lightboxPhotos.length > 0}
+        onClose={() => {
+          setLightboxPhotos([]);
+          setLightboxIndex(0);
+        }}
+        title="תצוגת תמונה"
+        width="max-w-5xl"
+      >
+        {lightboxPhotos.length > 0 && (
+          <div className="space-y-4">
+            <img
+              src={lightboxPhotos[lightboxIndex]?.drive_url}
+              alt={`תמונה ${lightboxIndex + 1}`}
+              className="max-h-[70vh] w-full rounded-lg object-contain"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setLightboxIndex((current) => Math.max(0, current - 1))}
+                disabled={lightboxIndex === 0}
+                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                <ChevronRight size={14} />
+                הקודם
+              </button>
+              <div className="text-sm text-muted-foreground">
+                {lightboxIndex + 1} / {lightboxPhotos.length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setLightboxIndex((current) => Math.min(lightboxPhotos.length - 1, current + 1))}
+                disabled={lightboxIndex >= lightboxPhotos.length - 1}
+                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                הבא
+                <ChevronLeft size={14} />
+              </button>
+            </div>
           </div>
         )}
       </Modal>

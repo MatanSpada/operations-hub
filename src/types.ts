@@ -251,6 +251,20 @@ export interface SupplyReportPhoto {
   notes?: string;
 }
 
+export interface SupplyUploadReportPhotoInput {
+  category: SupplyPhotoCategory;
+  filename: string;
+  mime_type: string;
+  base64_data: string;
+  notes?: string;
+}
+
+export interface SupplyUploadReportPhotosInput {
+  report_id: string;
+  apartment_id: string;
+  photos: SupplyUploadReportPhotoInput[];
+}
+
 export interface SupplyReportsQueryOptions {
   limit?: number;
   page?: number;

@@ -187,6 +187,10 @@ export function normalizeSupplyReportPhoto(row: RawRow): SupplyReportPhoto {
   };
 }
 
+export function normalizeSupplyReportPhotos(rows: unknown): SupplyReportPhoto[] {
+  return asRows(rows).map(normalizeSupplyReportPhoto);
+}
+
 export function normalizeSupplyApartments(rows: unknown): SupplyApartment[] {
   return asRows(rows)
     .map(normalizeSupplyApartment)

@@ -16,6 +16,7 @@ describe("supply Apps Script regression guards", () => {
       "supply_get_reporting_context",
       "supply_create_report",
       "supply_update_report",
+      "supply_upload_report_photos",
       "supply_create_apartment",
       "supply_update_apartment",
       "supply_deactivate_apartment",
@@ -37,5 +38,12 @@ describe("supply Apps Script regression guards", () => {
     expect(codeGs).toContain("function updateSupplyReportAction_(payload)");
     expect(codeGs).toContain('updateSupplyRowByField_(SUPPLY_SHEETS.REPORTS, "report_id", reportId');
     expect(codeGs).toContain('deleteSupplyRowsByField_(SUPPLY_SHEETS.REPORT_ITEMS, "report_id", reportId)');
+  });
+
+  it("uploads report photos through the dedicated Drive action", () => {
+    expect(codeGs).toContain("function uploadSupplyReportPhotosAction_(payload)");
+    expect(codeGs).toContain("function saveSupplyReportPhoto_(payload, options)");
+    expect(codeGs).toContain("appendSupplyRow_(SUPPLY_SHEETS.REPORT_PHOTOS, photoRecord)");
+    expect(codeGs).toContain("file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)");
   });
 });
