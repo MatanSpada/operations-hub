@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supplyControlApi } from "@/modules/apartment-supply-control/api";
+import { ApartmentSupplyDashboard } from "@/modules/apartment-supply-control/ApartmentSupplyDashboard";
 import { getSupplyPhotoDisplayUrl } from "@/modules/apartment-supply-control/normalize";
 import {
   SupplyApartment,
@@ -217,6 +218,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
   const [selectedReportDetails, setSelectedReportDetails] = useState<SupplyReportDetails | null>(null);
   const [reportDetailsLoading, setReportDetailsLoading] = useState(false);
   const [reportDetailsError, setReportDetailsError] = useState<string | null>(null);
+  const [selectedReportStandardItems, setSelectedReportStandardItems] = useState<SupplyStandardItem[]>([]);
   const [lightboxPhotos, setLightboxPhotos] = useState<SupplyReportPhoto[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
@@ -352,7 +354,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     setReportsLoading(false);
   }
 
-  async function openReportDetails(reportId: string) {
+  async function openReportDetails(reportId: string, standardItemsOverride?: SupplyStandardItem[]) {
     setSelectedReportId(reportId);
     setReportDetailsLoading(true);
     setReportDetailsError(null);
@@ -365,13 +367,15 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       return;
     }
 
+    const standardItemsForReport = standardItemsOverride || reportStandardItems;
+    setSelectedReportStandardItems(standardItemsForReport);
     setSelectedReportDetails({
       ...result.data,
       items: result.data.items.map((item) => ({
         ...item,
         category:
           item.category ||
-          reportStandardItems.find((standardItem) => standardItem.standard_item_id === item.standard_item_id)?.category,
+          standardItemsForReport.find((standardItem) => standardItem.standard_item_id === item.standard_item_id)?.category,
       })),
     });
     setReportDetailsLoading(false);
@@ -689,11 +693,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
             </TabsList>
 
             <TabsContent value="dashboard" className="mt-6">
-              <Card className="border-dashed shadow-none">
-                <CardContent className="flex min-h-40 items-center justify-center p-6 sm:min-h-48">
-                  <CardTitle className="text-lg">דשבורד בקרת אספקה</CardTitle>
-                </CardContent>
-              </Card>
+              <ApartmentSupplyDashboard onOpenReport={openReportDetails} />
             </TabsContent>
 
             <TabsContent value="reports" className="mt-6">
@@ -1003,6 +1003,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
           setSelectedReportId(null);
           setSelectedReportDetails(null);
           setReportDetailsError(null);
+          setSelectedReportStandardItems([]);
         }}
         title="דוח בקרת אספקה"
         width="max-w-4xl"
@@ -1067,7 +1068,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                 <CardTitle className="text-base">צ׳ק ליסט אספקה</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                {groupReportItemsByCategory(selectedReportDetails.items, reportStandardItems).map(([category, categoryItems]) => (
+                {groupReportItemsByCategory(selectedReportDetails.items, selectedReportStandardItems).map(([category, categoryItems]) => (
                   <div key={category} className="space-y-3">
                     <div className="text-sm font-semibold text-foreground">{category}</div>
                     <div className="space-y-3">
