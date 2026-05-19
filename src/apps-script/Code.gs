@@ -2781,6 +2781,23 @@ function getScriptPropertyWithFallback_(propertyName, fallbackValue) {
   return configuredValue || String(fallbackValue || "").trim();
 }
 
+function getSheetHeaders_(sheet) {
+  const lastColumn = sheet.getLastColumn();
+  if (!lastColumn) {
+    throw new Error("Sheet is missing a header row: " + sheet.getName());
+  }
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(function (header) {
+    return String(header || "").trim();
+  });
+
+  if (headers.every(function (header) { return !header; })) {
+    throw new Error("Sheet is missing a header row: " + sheet.getName());
+  }
+
+  return headers;
+}
+
 function getSheetRowsWithHeaders_(sheet, requiredColumns) {
   const values = sheet.getDataRange().getValues();
   if (values.length === 0) {
