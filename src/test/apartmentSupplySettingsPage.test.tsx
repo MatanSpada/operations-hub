@@ -27,6 +27,7 @@ const apartment: SupplyApartment = {
   mission: "אח + אורן",
   type: "דירה",
   notes: "",
+  report_token: "demo_ramat_hashavim",
   active: true,
 };
 
@@ -62,9 +63,8 @@ describe("ApartmentSupplyControlPage settings", () => {
     render(<ApartmentSupplyControlPage initialSection="settings" />);
 
     expect(await screen.findByRole("heading", { name: "הגדרות בקרת אספקה" })).toBeInTheDocument();
-    expect(
-      screen.getByText("אין עדיין דירות פעילות. אפשר להוסיף דירה חדשה או לטעון נתוני דמה."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("אין עדיין דירות פעילות. אפשר להוסיף דירה חדשה כדי להתחיל.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "טען נתוני דמה" })).not.toBeInTheDocument();
   });
 
   it("shows the selected apartment checklist when apartments and items are available", async () => {
@@ -82,5 +82,13 @@ describe("ApartmentSupplyControlPage settings", () => {
     expect(screen.getByText("מיטה")).toBeInTheDocument();
     expect(screen.getByText("13")).toBeInTheDocument();
     expect(screen.getByText("כמות")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ערוך דירה רמת השבים/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /מחק דירה/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByText("תקן אספקה קבוע")).not.toBeInTheDocument();
+    expect(screen.queryByText("פריט | קטגוריה | ערך נדרש | סוג דרישה | צילום חובה | פעולות")).not.toBeInTheDocument();
+    expect(screen.getAllByText("קישור דיווח").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "העתק קישור" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "פתח טופס דיווח" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/supplyReportToken=/)).toBeInTheDocument();
   });
 });

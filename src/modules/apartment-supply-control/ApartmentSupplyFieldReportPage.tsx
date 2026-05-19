@@ -70,6 +70,24 @@ function buildInitialPendingPhotos(): Record<SupplyPhotoCategory, PendingPhoto[]
   };
 }
 
+function buildInitialPhotoCounts(): Record<SupplyPhotoCategory, number> {
+  return {
+    מקרר: 0,
+    "ציוד ניקוי אקסטרה": 0,
+    מצעים: 0,
+    חריגים: 0,
+  };
+}
+
+function buildInitialPhotoErrors(): Record<SupplyPhotoCategory, string> {
+  return {
+    מקרר: "",
+    "ציוד ניקוי אקסטרה": "",
+    מצעים: "",
+    חריגים: "",
+  };
+}
+
 function formatRequiredValue(item: SupplyStandardItem): string {
   return item.required_value?.trim() || "קיים";
 }
@@ -184,12 +202,23 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [isEditingSubmittedReport, setIsEditingSubmittedReport] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<Record<SupplyPhotoCategory, PendingPhoto[]>>(buildInitialPendingPhotos());
+  const [uploadedPhotoCounts, setUploadedPhotoCounts] = useState<Record<SupplyPhotoCategory, number>>(buildInitialPhotoCounts());
+  const [photoCategoryErrors, setPhotoCategoryErrors] = useState<Record<SupplyPhotoCategory, string>>(buildInitialPhotoErrors());
   const pendingPhotosRef = useRef(pendingPhotos);
 
   const groupedItems = useMemo(
     () => groupItemsByCategory(context?.standardItems || []),
     [context],
   );
+  const requiredPhotoCategories = useMemo(() => {
+    const categories = new Set<SupplyPhotoCategory>();
+    (context?.standardItems || []).forEach((item) => {
+      if (item.photo_required && PHOTO_CATEGORIES.includes(item.category as SupplyPhotoCategory)) {
+        categories.add(item.category as SupplyPhotoCategory);
+      }
+    });
+    return categories;
+  }, [context]);
 
   useEffect(() => {
     pendingPhotosRef.current = pendingPhotos;
@@ -231,6 +260,8 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     setSelectedApartmentId(result.data.apartment.apartment_id);
     setItemStates(buildInitialItemStates(result.data.standardItems));
     clearPendingPhotos();
+    setUploadedPhotoCounts(buildInitialPhotoCounts());
+    setPhotoCategoryErrors(buildInitialPhotoErrors());
     setSubmittedReportId(null);
     setIsEditingSubmittedReport(false);
     setLoading(false);
@@ -302,6 +333,23 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
       return;
     }
 
+    const nextPhotoErrors = buildInitialPhotoErrors();
+    let hasMissingRequiredPhotos = false;
+    requiredPhotoCategories.forEach((category) => {
+      const existingCount = uploadedPhotoCounts[category] || 0;
+      const pendingCount = pendingPhotosRef.current[category]?.length || 0;
+      if (existingCount + pendingCount === 0) {
+        nextPhotoErrors[category] = "חובה לצרף תמונה לקטגוריה זו";
+        hasMissingRequiredPhotos = true;
+      }
+    });
+    setPhotoCategoryErrors(nextPhotoErrors);
+
+    if (hasMissingRequiredPhotos) {
+      setSubmitError("יש לצרף תמונות לכל הקטגוריות המסומנות כחובה");
+      return;
+    }
+
     const payload: SupplyCreateReportInput = {
       apartment_id: context.apartment.apartment_id,
       reporter_initials: normalizedInitials,
@@ -354,6 +402,17 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
           setSubmitting(false);
           return;
         }
+
+        const uploadedCounts = uploadedPhotoPayload.reduce<Record<SupplyPhotoCategory, number>>((result, photo) => {
+          result[photo.category] += 1;
+          return result;
+        }, buildInitialPhotoCounts());
+        setUploadedPhotoCounts((current) => ({
+          מקרר: current["מקרר"] + uploadedCounts["מקרר"],
+          "ציוד ניקוי אקסטרה": current["ציוד ניקוי אקסטרה"] + uploadedCounts["ציוד ניקוי אקסטרה"],
+          מצעים: current["מצעים"] + uploadedCounts["מצעים"],
+          חריגים: current["חריגים"] + uploadedCounts["חריגים"],
+        }));
       }
 
       setSubmittedReportId(result.data.report.report_id);
@@ -379,6 +438,10 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     }
 
     setSubmitError(null);
+    setPhotoCategoryErrors((current) => ({
+      ...current,
+      [category]: "",
+    }));
 
     const nextPhotos: PendingPhoto[] = [];
     for (const file of Array.from(files)) {
@@ -625,14 +688,19 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              ניתן לצרף תמונות להוכחת מילוי האספקה
+              ניתן לצרף תמונות להוכחת מילוי האספקה. קטגוריות שמסומנות כחובה מחייבות לפחות תמונה אחת.
             </div>
 
             {PHOTO_CATEGORIES.map((category) => (
               <div key={category} className="space-y-3 rounded-xl border border-border p-4">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <ImagePlus size={16} className="text-muted-foreground" />
                   <div className="font-medium text-foreground">{category}</div>
+                  {requiredPhotoCategories.has(category) && (
+                    <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-status-danger-text">
+                      חובה
+                    </span>
+                  )}
                 </div>
 
                 <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/10 px-4 py-6 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/20">
@@ -641,6 +709,7 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
                     accept="image/*"
                     multiple
                     className="hidden"
+                    disabled={submitting}
                     onChange={(event) => {
                       handlePhotoSelection(category, event.target.files);
                       event.currentTarget.value = "";
@@ -650,8 +719,19 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
                   <span className="text-xs">אפשר לצרף כמה תמונות לכל קטגוריה</span>
                 </label>
 
+                {photoCategoryErrors[category] && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-status-danger-text">
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                    <span>{photoCategoryErrors[category]}</span>
+                  </div>
+                )}
+
                 {pendingPhotos[category].length === 0 ? (
-                  <div className="text-sm text-muted-foreground">לא נבחרו תמונות לקטגוריה זו</div>
+                  <div className="text-sm text-muted-foreground">
+                    {uploadedPhotoCounts[category] > 0
+                      ? `כבר נשמרו ${uploadedPhotoCounts[category]} תמונות לקטגוריה זו`
+                      : "לא נבחרו תמונות לקטגוריה זו"}
+                  </div>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {pendingPhotos[category].map((photo) => (

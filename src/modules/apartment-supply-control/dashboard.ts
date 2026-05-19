@@ -19,6 +19,16 @@ export type SupplyDashboardRecurringApartment = {
   issueItems: number;
 };
 
+export type SupplyDashboardApartmentIssues = {
+  apartment: SupplyApartment;
+  issueItems: number;
+};
+
+export type SupplyDashboardReporterActivity = {
+  reporter: string;
+  reportsCount: number;
+};
+
 export type SupplyDashboardSummary = {
   month: string;
   activeApartmentsCount: number;
@@ -31,6 +41,8 @@ export type SupplyDashboardSummary = {
   issueCategoryCounts: Array<{ category: string; count: number }>;
   recentReports: SupplyDashboardReportRow[];
   recurringIssueApartments: SupplyDashboardRecurringApartment[];
+  topIssueApartments: SupplyDashboardApartmentIssues[];
+  reporterActivity: SupplyDashboardReporterActivity[];
 };
 
 const ISSUE_CATEGORY_ORDER = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי", "אחר"] as const;
@@ -124,6 +136,7 @@ export function buildSupplyDashboardSummary(params: {
   const monthlyReports: SupplyDashboardReportRow[] = [];
   const apartmentsWithReports = new Set<string>();
   const recurringByApartment = new Map<string, SupplyDashboardRecurringApartment>();
+  const reporterCounts = new Map<string, number>();
 
   Object.entries(reportsByApartment).forEach(([apartmentId, reports]) => {
     const apartment = apartmentById[apartmentId];
@@ -137,6 +150,8 @@ export function buildSupplyDashboardSummary(params: {
 
       apartmentsWithReports.add(apartmentId);
       monthlyReports.push({ apartment, report });
+      const reporter = report.reporter_initials?.trim() || "לא צוין";
+      reporterCounts.set(reporter, (reporterCounts.get(reporter) || 0) + 1);
 
       const normalizedStatus = normalizeSupplyDashboardStatus(report.overall_status);
       statusCounts[normalizedStatus] += 1;
@@ -207,5 +222,25 @@ export function buildSupplyDashboardSummary(params: {
         return left.apartment.location.localeCompare(right.apartment.location, "he");
       })
       .slice(0, 6),
+    topIssueApartments: [...recurringByApartment.values()]
+      .filter((entry) => entry.issueItems > 0)
+      .sort((left, right) => {
+        if (right.issueItems !== left.issueItems) return right.issueItems - left.issueItems;
+        return left.apartment.location.localeCompare(right.apartment.location, "he");
+      })
+      .slice(0, 3)
+      .map((entry) => ({
+        apartment: entry.apartment,
+        issueItems: entry.issueItems,
+      })),
+    reporterActivity: [...reporterCounts.entries()]
+      .map(([reporter, reportsCount]) => ({
+        reporter,
+        reportsCount,
+      }))
+      .sort((left, right) => {
+        if (right.reportsCount !== left.reportsCount) return right.reportsCount - left.reportsCount;
+        return left.reporter.localeCompare(right.reporter, "he");
+      }),
   };
 }

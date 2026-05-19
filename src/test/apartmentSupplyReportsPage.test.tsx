@@ -123,9 +123,9 @@ describe("ApartmentSupplyControlPage reports", () => {
     expect(await screen.findByText("מ.ש")).toBeInTheDocument();
     expect(screen.queryByText("דיווחים לפי דירה")).not.toBeInTheDocument();
     expect(screen.getByText("בחירת דירה")).toBeInTheDocument();
-    expect(screen.getByText("תאריך")).toBeInTheDocument();
-    expect(screen.getByText("מדווח")).toBeInTheDocument();
-    expect(screen.getByText("הערות")).toBeInTheDocument();
+    expect(screen.getAllByText("תאריך").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מדווח").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("הערות").length).toBeGreaterThan(0);
     expect(screen.queryByText("סטטוס")).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: "עזרי — ורד" })).toBeInTheDocument();
   });

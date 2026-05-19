@@ -159,10 +159,13 @@ describe("ApartmentSupplyControlPage dashboard", () => {
     expect(screen.getByText("התפלגות סטטוסים")).toBeInTheDocument();
     expect(screen.getByText("תקלות לפי קטגוריה")).toBeInTheDocument();
     expect(screen.getByText("מוצגים פריטים שסומנו כ\"חסר\" או \"חלקי\" בחודש שנבחר.")).toBeInTheDocument();
+    expect(screen.getByText("טופ 3 דירות עם הכי הרבה חוסרים")).toBeInTheDocument();
+    expect(screen.getByText("פעילות לפי מדווח")).toBeInTheDocument();
     expect(screen.getByText("דיווחים אחרונים")).toBeInTheDocument();
     expect(screen.getAllByText("דירות ללא דיווח החודש").length).toBeGreaterThan(0);
     expect(screen.getByText("גבעה")).toBeInTheDocument();
     expect(screen.getAllByText("עזרי — ורד").length).toBeGreaterThan(0);
+    expect(screen.getByText("מ.ש")).toBeInTheDocument();
   });
 
   it("changes the selected month and shows the no reports empty state", async () => {
