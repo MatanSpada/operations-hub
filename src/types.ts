@@ -232,6 +232,7 @@ export interface SupplyReportItem {
   report_item_id: string;
   report_id: string;
   standard_item_id?: string;
+  category?: string;
   item_name: string;
   required_value?: string;
   reported_status: SupplyReportedStatus;

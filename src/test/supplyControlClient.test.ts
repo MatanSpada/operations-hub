@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSupplyReport,
   createSupplyApartment,
+  getSupplyReportDetails,
+  getSupplyReportsByApartment,
   getSupplyReportingContext,
   createSupplyStandardItem,
   seedSupplyDemoData,
@@ -275,6 +277,47 @@ describe("supply control client actions", () => {
           item_notes: "",
         },
       ],
+    });
+  });
+
+  it("maps reports-by-apartment params to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: [],
+    });
+
+    await getSupplyReportsByApartment("apt-1", { page: 2, limit: 30 });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_get_reports_by_apartment", {
+      apartmentId: "apt-1",
+      limit: 30,
+      page: 2,
+    });
+  });
+
+  it("maps report details params to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        report: {
+          report_id: "rep-1",
+          apartment_id: "apt-1",
+          reported_at: "2026-05-20T09:00:00.000Z",
+        },
+        apartment: {
+          apartment_id: "apt-1",
+          location: "עזרי",
+          mission: "ורד",
+          type: "דירה",
+          active: true,
+        },
+        items: [],
+        photos: [],
+      },
+    });
+
+    await getSupplyReportDetails("rep-1");
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_get_report_details", {
+      reportId: "rep-1",
     });
   });
 });

@@ -165,6 +165,7 @@ export function normalizeSupplyReportItem(row: RawRow): SupplyReportItem {
     report_item_id: readString(row, ["report_item_id", "ReportItemID", "ReportItemId"]),
     report_id: readString(row, ["report_id", "ReportID", "ReportId"]),
     standard_item_id: readOptionalString(row, ["standard_item_id", "StandardItemID", "StandardItemId"]),
+    category: readOptionalString(row, ["category", "Category"]),
     item_name: readString(row, ["item_name", "ItemName"]),
     required_value: readOptionalString(row, ["required_value", "RequiredValue"]),
     reported_status: normalizeReportedStatus(readValue(row, ["reported_status", "ReportedStatus"])),

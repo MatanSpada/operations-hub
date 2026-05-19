@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   LayoutDashboard,
   Pencil,
@@ -22,7 +24,10 @@ import { supplyControlApi } from "@/modules/apartment-supply-control/api";
 import {
   SupplyApartment,
   SupplyApartmentInput,
+  SupplyReport,
+  SupplyReportDetails,
   SupplyRequiredType,
+  SupplyReportedStatus,
   SupplyStandardItem,
   SupplyStandardItemInput,
 } from "@/types";
@@ -55,6 +60,13 @@ const REQUIRED_TYPE_LABELS: Record<SupplyRequiredType, string> = {
   text: "טקסט",
 };
 
+const REPORTED_STATUS_LABELS: Record<SupplyReportedStatus, string> = {
+  ok: "תקין",
+  missing: "חסר",
+  partial: "חלקי",
+  not_relevant: "לא רלוונטי",
+};
+
 const CATEGORY_OPTIONS = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי"] as const;
 
 const EMPTY_APARTMENT_FORM: SupplyApartmentInput = {
@@ -76,6 +88,43 @@ const EMPTY_ITEM_FORM = (apartmentId = ""): SupplyStandardItemInput => ({
 
 function formatApartmentLabel(apartment: SupplyApartment): string {
   return `${apartment.location} · ${apartment.mission}`;
+}
+
+function formatApartmentOptionLabel(apartment: SupplyApartment): string {
+  return `${apartment.location} — ${apartment.mission}`;
+}
+
+function formatSupplyReportDateTime(value?: string): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("he-IL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
+function groupReportItemsByCategory(
+  items: SupplyReportDetails["items"],
+  standardItems: SupplyStandardItem[],
+) {
+  const categoryByStandardItemId = standardItems.reduce<Record<string, string>>((result, item) => {
+    result[item.standard_item_id] = item.category;
+    return result;
+  }, {});
+
+  const grouped = new Map<string, SupplyReportDetails["items"]>();
+  items.forEach((item) => {
+    const category = item.category || (item.standard_item_id ? categoryByStandardItemId[item.standard_item_id] : "") || "ללא קטגוריה";
+    const current = grouped.get(category) || [];
+    current.push({
+      ...item,
+      category,
+    });
+    grouped.set(category, current);
+  });
+
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right, "he"));
 }
 
 function ApartmentCard({
@@ -144,6 +193,18 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
   const [itemsLoading, setItemsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [reportApartments, setReportApartments] = useState<SupplyApartment[]>([]);
+  const [reportSelectedApartmentId, setReportSelectedApartmentId] = useState("");
+  const [reportStandardItems, setReportStandardItems] = useState<SupplyStandardItem[]>([]);
+  const [reports, setReports] = useState<SupplyReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [reportsPage, setReportsPage] = useState(1);
+  const [reportsTotal, setReportsTotal] = useState(0);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [selectedReportDetails, setSelectedReportDetails] = useState<SupplyReportDetails | null>(null);
+  const [reportDetailsLoading, setReportDetailsLoading] = useState(false);
+  const [reportDetailsError, setReportDetailsError] = useState<string | null>(null);
 
   const filteredApartments = useMemo(() => {
     const normalizedSearch = search.trim();
@@ -160,6 +221,11 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     () => apartments.find((apartment) => apartment.apartment_id === selectedApartmentId) ?? null,
     [apartments, selectedApartmentId],
   );
+  const selectedReportApartment = useMemo(
+    () => reportApartments.find((apartment) => apartment.apartment_id === reportSelectedApartmentId) ?? null,
+    [reportApartments, reportSelectedApartmentId],
+  );
+  const totalReportPages = Math.max(1, Math.ceil(reportsTotal / 30));
 
   async function loadApartments(preferredApartmentId?: string) {
     setSettingsLoading(true);
@@ -208,6 +274,95 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     setItemsLoading(false);
   }
 
+  async function loadReportApartments(preferredApartmentId?: string) {
+    setReportsLoading(true);
+    setReportsError(null);
+
+    const result = await supplyControlApi.getSupplyApartments();
+    if (!result.data) {
+      setReportApartments([]);
+      setReportSelectedApartmentId("");
+      setReports([]);
+      setReportsTotal(0);
+      setReportsError(result.error || "טעינת רשימת הדירות נכשלה");
+      setReportsLoading(false);
+      return;
+    }
+
+    setReportApartments(result.data);
+    setReportSelectedApartmentId((current) => {
+      const requestedId = preferredApartmentId ?? current;
+      if (requestedId && result.data.some((apartment) => apartment.apartment_id === requestedId)) {
+        return requestedId;
+      }
+      return result.data[0]?.apartment_id ?? "";
+    });
+    setReportsLoading(false);
+  }
+
+  async function loadReports(apartmentId: string, page = 1) {
+    if (!apartmentId) {
+      setReports([]);
+      setReportsTotal(0);
+      return;
+    }
+
+    setReportsLoading(true);
+    setReportsError(null);
+
+    const [reportsResult, standardItemsResult] = await Promise.all([
+      supplyControlApi.getSupplyReportsByApartment(apartmentId, { page, limit: 30 }),
+      supplyControlApi.getSupplyStandardItems(apartmentId),
+    ]);
+
+    if (!reportsResult.data) {
+      setReports([]);
+      setReportsTotal(0);
+      setReportsError(reportsResult.error || "טעינת הדיווחים נכשלה");
+      setReportsLoading(false);
+      return;
+    }
+
+    setReports(reportsResult.data.reports);
+    setReportsTotal(reportsResult.data.total);
+    setReportStandardItems(standardItemsResult.data || []);
+
+    if (!standardItemsResult.data && standardItemsResult.error) {
+      toast({
+        variant: "destructive",
+        title: "טעינת תקן אספקה נכשלה",
+        description: standardItemsResult.error,
+      });
+    }
+
+    setReportsLoading(false);
+  }
+
+  async function openReportDetails(reportId: string) {
+    setSelectedReportId(reportId);
+    setReportDetailsLoading(true);
+    setReportDetailsError(null);
+
+    const result = await supplyControlApi.getSupplyReportDetails(reportId);
+    if (!result.data) {
+      setSelectedReportDetails(null);
+      setReportDetailsError(result.error || "טעינת הדוח נכשלה");
+      setReportDetailsLoading(false);
+      return;
+    }
+
+    setSelectedReportDetails({
+      ...result.data,
+      items: result.data.items.map((item) => ({
+        ...item,
+        category:
+          item.category ||
+          reportStandardItems.find((standardItem) => standardItem.standard_item_id === item.standard_item_id)?.category,
+      })),
+    });
+    setReportDetailsLoading(false);
+  }
+
   useEffect(() => {
     if (activeSection !== "settings") return;
     void loadApartments();
@@ -217,6 +372,19 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     if (activeSection !== "settings") return;
     void loadItems(selectedApartmentId);
   }, [activeSection, selectedApartmentId]);
+
+  useEffect(() => {
+    if (activeSection !== "reports") return;
+    void loadReportApartments();
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (activeSection !== "reports") return;
+    setSelectedReportId(null);
+    setSelectedReportDetails(null);
+    setReportDetailsError(null);
+    void loadReports(reportSelectedApartmentId, reportsPage);
+  }, [activeSection, reportSelectedApartmentId, reportsPage]);
 
   function openCreateApartmentModal() {
     setApartmentForm(EMPTY_APARTMENT_FORM);
@@ -510,11 +678,119 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
             </TabsContent>
 
             <TabsContent value="reports" className="mt-6">
-              <Card className="border-dashed shadow-none">
-                <CardContent className="flex min-h-40 items-center justify-center p-6 sm:min-h-48">
-                  <CardTitle className="text-lg">דיווחים לפי דירה</CardTitle>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <PageHeader
+                  title="דיווחי בקרת אספקה"
+                  subtitle="בחירת דירה, צפייה בדיווחים האחרונים, ופתיחת דוח מלא באותו מסך."
+                />
+
+                <Card className="shadow-card">
+                  <CardHeader className="gap-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="w-full max-w-md">
+                        <label className="flex flex-col gap-2 text-sm">
+                          <span className="font-medium text-foreground">בחירת דירה</span>
+                          <select
+                            value={reportSelectedApartmentId}
+                            onChange={(event) => {
+                              setReportsPage(1);
+                              setReportSelectedApartmentId(event.target.value);
+                            }}
+                            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
+                          >
+                            <option value="">בחר דירה</option>
+                            {reportApartments.map((apartment) => (
+                              <option key={apartment.apartment_id} value={apartment.apartment_id}>
+                                {formatApartmentOptionLabel(apartment)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void loadReportApartments(reportSelectedApartmentId)}
+                        className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <RefreshCw size={14} />
+                        רענון
+                      </button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {!reportSelectedApartmentId ? (
+                      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                        בחר דירה להצגת דיווחים
+                      </div>
+                    ) : reportsLoading ? (
+                      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                        טוען דיווחים...
+                      </div>
+                    ) : reportsError ? (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4 text-sm text-status-danger-text">
+                        {reportsError}
+                      </div>
+                    ) : reports.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                        לא קיימים דיווחים לדירה זו
+                      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-hidden rounded-xl border border-border">
+                          <div className="grid grid-cols-[8rem_7rem_minmax(0,1fr)] gap-3 bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground">
+                            <div>תאריך</div>
+                            <div>מדווח</div>
+                            <div>הערות</div>
+                          </div>
+                          <div className="divide-y divide-border">
+                            {reports.map((report) => (
+                              <button
+                                key={report.report_id}
+                                type="button"
+                                onClick={() => void openReportDetails(report.report_id)}
+                                className="grid w-full grid-cols-[8rem_7rem_minmax(0,1fr)] gap-3 px-4 py-4 text-right transition-colors hover:bg-muted/30"
+                              >
+                                <div className="text-sm text-foreground">{formatSupplyReportDateTime(report.reported_at)}</div>
+                                <div className="text-sm text-foreground">{report.reporter_initials || "—"}</div>
+                                <div className="truncate text-sm text-muted-foreground">
+                                  {report.general_notes || "—"}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {reportsTotal > 30 && (
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setReportsPage((current) => Math.max(1, current - 1))}
+                              disabled={reportsPage === 1}
+                              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                              <ChevronRight size={14} />
+                              הקודם
+                            </button>
+                            <div className="text-sm text-muted-foreground">
+                              עמוד {reportsPage} מתוך {totalReportPages}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setReportsPage((current) => Math.min(totalReportPages, current + 1))}
+                              disabled={reportsPage >= totalReportPages}
+                              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                              הבא
+                              <ChevronLeft size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="settings" className="mt-6 space-y-6">
@@ -701,6 +977,114 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
           </Tabs>
         </CardHeader>
       </Card>
+
+      <Modal
+        open={Boolean(selectedReportId)}
+        onClose={() => {
+          setSelectedReportId(null);
+          setSelectedReportDetails(null);
+          setReportDetailsError(null);
+        }}
+        title="דוח בקרת אספקה"
+        width="max-w-4xl"
+      >
+        {reportDetailsLoading ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+            טוען פרטי דוח...
+          </div>
+        ) : reportDetailsError ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4 text-sm text-status-danger-text">
+            {reportDetailsError}
+          </div>
+        ) : !selectedReportDetails ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+            לא נמצאו פרטי דוח להצגה
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="text-xs text-muted-foreground">מיקום</div>
+                <div className="mt-1 text-sm font-medium">{selectedReportDetails.apartment.location}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="text-xs text-muted-foreground">משימה</div>
+                <div className="mt-1 text-sm font-medium">{selectedReportDetails.apartment.mission}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="text-xs text-muted-foreground">סוג</div>
+                <div className="mt-1 text-sm font-medium">{selectedReportDetails.apartment.type}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="text-xs text-muted-foreground">תאריך ומדווח</div>
+                <div className="mt-1 text-sm font-medium">
+                  {formatSupplyReportDateTime(selectedReportDetails.report.reported_at)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {selectedReportDetails.report.reporter_initials || "לא צוין מדווח"}
+                </div>
+              </div>
+            </div>
+
+            <Card className="shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base">הערות / תקלות שנצפו</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedReportDetails.report.general_notes ? (
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                    {selectedReportDetails.report.general_notes}
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                    לא דווחו הערות
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base">צ׳ק ליסט אספקה</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {groupReportItemsByCategory(selectedReportDetails.items, reportStandardItems).map(([category, categoryItems]) => (
+                  <div key={category} className="space-y-3">
+                    <div className="text-sm font-semibold text-foreground">{category}</div>
+                    <div className="space-y-3">
+                      {categoryItems.map((item) => (
+                        <div key={item.report_item_id} className="rounded-xl border border-border p-4">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="font-medium text-foreground">{item.item_name}</div>
+                              <div className="mt-1 text-sm text-muted-foreground">
+                                ערך נדרש: {item.required_value || "קיים"}
+                              </div>
+                            </div>
+                            <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                              {REPORTED_STATUS_LABELS[item.reported_status]}
+                            </div>
+                          </div>
+                          {item.actual_value && (
+                            <div className="mt-3 text-sm text-foreground">
+                              <span className="font-medium">מה נמצא בפועל:</span> {item.actual_value}
+                            </div>
+                          )}
+                          {item.item_notes && (
+                            <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                              <span className="font-medium text-foreground">הערה:</span> {item.item_notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={settingsModal?.type === "createApartment" || settingsModal?.type === "editApartment"}
