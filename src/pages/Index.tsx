@@ -21,6 +21,9 @@ import { VehiclesPage } from "@/modules/vehicles/VehiclesPage";
 import { WorkforcePage } from "@/modules/workforce/WorkforcePage";
 import { QualificationsPage } from "@/modules/qualifications/QualificationsPage";
 import { SettingsPage } from "@/modules/settings/SettingsPage";
+import { ApartmentSupplyControlPage } from "@/modules/apartment-supply-control/ApartmentSupplyControlPage";
+import { ApartmentSupplyFieldReportPage } from "@/modules/apartment-supply-control/ApartmentSupplyFieldReportPage";
+import { parseSupplyReportingEntry } from "@/modules/apartment-supply-control/reportingEntry";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Index() {
@@ -29,6 +32,7 @@ export default function Index() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "synced" | "error">("idle");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
+  const [reportingEntry, setReportingEntry] = useState(() => parseSupplyReportingEntry(window.location));
 
   const load = useCallback(async () => {
     setSyncStatus("loading");
@@ -41,7 +45,24 @@ export default function Index() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (reportingEntry) return;
+    load();
+  }, [load, reportingEntry]);
+
+  useEffect(() => {
+    const syncEntry = () => {
+      setReportingEntry(parseSupplyReportingEntry(window.location));
+    };
+
+    window.addEventListener("hashchange", syncEntry);
+    window.addEventListener("popstate", syncEntry);
+
+    return () => {
+      window.removeEventListener("hashchange", syncEntry);
+      window.removeEventListener("popstate", syncEntry);
+    };
+  }, []);
 
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -71,9 +92,24 @@ export default function Index() {
       case "workforce":     return <WorkforcePage data={data} onRefresh={load} />;
       case "qualifications":return <QualificationsPage data={data} />;
       case "settings":      return <SettingsPage data={data} onRefresh={load} />;
+      case "apartmentSupplyControl":
+        return <ApartmentSupplyControlPage />;
       default:              return null;
     }
   };
+
+  if (reportingEntry) {
+    return (
+      <div className="min-h-screen bg-background" dir="rtl">
+        <main className="px-4 py-6 sm:px-6 sm:py-8">
+          <ApartmentSupplyFieldReportPage
+            apartmentId={reportingEntry.apartmentId}
+            reportToken={reportingEntry.reportToken}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background" dir="rtl">

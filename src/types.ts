@@ -22,7 +22,8 @@ export type TabId =
   | "vehicles"
   | "workforce"
   | "qualifications"
-  | "settings";
+  | "settings"
+  | "apartmentSupplyControl";
 
 // ── Employees ────────────────────────────────────────────────────────
 // UPDATE SHEET COLUMN MAP HERE — matches Employees sheet columns
@@ -161,6 +162,161 @@ export interface EmployeeQualification {
 export interface EmployeeDrivingLicense {
   employeeId: string;
   drivingLicenseId: string;
+}
+
+// ── Apartment Supply Control ────────────────────────────────────────
+export type SupplyRequiredType = "exists" | "quantity" | "text";
+
+export type SupplyReportedStatus = "ok" | "missing" | "partial" | "not_relevant";
+
+export type SupplyOverallStatus = "ok" | "partial" | "missing" | "issue";
+
+export type SupplyPhotoCategory = "מקרר" | "ציוד ניקוי אקסטרה" | "מצעים" | "חריגים";
+
+export interface SupplyApartment {
+  apartment_id: string;
+  location: string;
+  mission: string;
+  type: string;
+  notes?: string;
+  report_token?: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SupplyApartmentInput {
+  apartment_id?: string;
+  location: string;
+  mission: string;
+  type: string;
+  notes?: string;
+  report_token?: string;
+  active?: boolean;
+}
+
+export interface SupplyStandardItem {
+  standard_item_id: string;
+  apartment_id: string;
+  category: string;
+  item_name: string;
+  required_value?: string;
+  required_type: SupplyRequiredType;
+  photo_required: boolean;
+  active: boolean;
+  notes?: string;
+}
+
+export interface SupplyStandardItemInput {
+  standard_item_id?: string;
+  apartment_id: string;
+  category: string;
+  item_name: string;
+  required_value?: string;
+  required_type: SupplyRequiredType;
+  photo_required: boolean;
+  notes?: string;
+  active?: boolean;
+}
+
+export interface SupplyReport {
+  report_id: string;
+  apartment_id: string;
+  reporter_initials?: string;
+  reported_at: string;
+  general_notes?: string;
+  overall_status?: SupplyOverallStatus;
+}
+
+export interface SupplyReportItem {
+  report_item_id: string;
+  report_id: string;
+  standard_item_id?: string;
+  category?: string;
+  item_name: string;
+  required_value?: string;
+  reported_status: SupplyReportedStatus;
+  actual_value?: string;
+  item_notes?: string;
+}
+
+export interface SupplyReportPhoto {
+  photo_id: string;
+  report_id: string;
+  apartment_id: string;
+  category: SupplyPhotoCategory;
+  drive_file_id?: string;
+  drive_url?: string;
+  uploaded_at?: string;
+  notes?: string;
+}
+
+export interface SupplyUploadReportPhotoInput {
+  category: SupplyPhotoCategory;
+  filename: string;
+  mime_type: string;
+  base64_data: string;
+  notes?: string;
+}
+
+export interface SupplyUploadReportPhotosInput {
+  report_id: string;
+  apartment_id: string;
+  photos: SupplyUploadReportPhotoInput[];
+}
+
+export interface SupplyReportsQueryOptions {
+  limit?: number;
+  page?: number;
+}
+
+export interface SupplyReportsByApartmentResult {
+  reports: SupplyReport[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SupplyReportDetails {
+  report: SupplyReport;
+  apartment: SupplyApartment;
+  items: SupplyReportItem[];
+  photos: SupplyReportPhoto[];
+}
+
+export interface SupplyReportingContextParams {
+  apartmentId?: string;
+  reportToken?: string;
+}
+
+export interface SupplyReportingContext {
+  apartment: SupplyApartment;
+  standardItems: SupplyStandardItem[];
+}
+
+export interface SupplyReportItemInput {
+  standard_item_id: string;
+  item_name: string;
+  required_value?: string;
+  reported_status: SupplyReportedStatus;
+  actual_value?: string;
+  item_notes?: string;
+}
+
+export interface SupplyCreateReportInput {
+  apartment_id: string;
+  reporter_initials: string;
+  general_notes?: string;
+  items: SupplyReportItemInput[];
+}
+
+export interface SupplyUpdateReportInput extends SupplyCreateReportInput {
+  report_id: string;
+}
+
+export interface SupplyCreateReportResult {
+  report: SupplyReport;
+  items_count: number;
 }
 
 // ── API Response ─────────────────────────────────────────────────────

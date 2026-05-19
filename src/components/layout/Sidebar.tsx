@@ -20,6 +20,7 @@ import {
   Users,
   Award,
   Database,
+  Building2,
   X,
 } from "lucide-react";
 import { TabId } from "@/types";
@@ -36,6 +37,7 @@ const NAV_ITEMS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "workforce", label: "כוח אדם ומילואים", icon: <Users size={18} /> },
   { id: "qualifications", label: "הכשרות", icon: <Award size={18} /> },
   { id: "settings", label: "ניהול נתונים", icon: <Database size={18} /> },
+  { id: "apartmentSupplyControl", label: "בקרת אספקת דירות", icon: <Building2 size={18} /> },
 ];
 
 interface SidebarProps {
