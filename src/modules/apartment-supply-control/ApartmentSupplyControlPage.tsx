@@ -4,21 +4,24 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Copy,
+  ExternalLink,
   Image as ImageIcon,
   LayoutDashboard,
   Pencil,
   Plus,
-  Power,
   RefreshCw,
   Settings2,
-  DatabaseZap,
+  Trash2,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { Modal } from "@/components/shared/Modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GITHUB_PAGES_BASE_PATH } from "@/config";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supplyControlApi } from "@/modules/apartment-supply-control/api";
@@ -100,6 +103,15 @@ function formatApartmentOptionLabel(apartment: SupplyApartment): string {
   return `${apartment.location} — ${apartment.mission}`;
 }
 
+function buildSupplyReportLink(reportToken?: string): string {
+  if (!reportToken) return "";
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:5173";
+  const appUrl = new URL(GITHUB_PAGES_BASE_PATH || "/", origin);
+  appUrl.searchParams.set("supplyReportToken", reportToken);
+  return appUrl.toString();
+}
+
 function formatSupplyReportDateTime(value?: string): string {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -144,31 +156,63 @@ function ApartmentCard({
   apartment,
   isSelected,
   onClick,
+  onEdit,
+  onDeactivate,
 }: {
   apartment: SupplyApartment;
   isSelected: boolean;
   onClick: () => void;
+  onEdit: () => void;
+  onDeactivate: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "w-full rounded-lg border p-4 text-right transition-colors",
+        "rounded-lg border p-4 text-right transition-colors",
         isSelected
           ? "border-primary bg-primary/5 shadow-sm"
           : "border-border bg-card hover:bg-muted/40",
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <button type="button" onClick={onClick} className="min-w-0 flex-1 text-right">
           <div className="truncate text-sm font-semibold text-foreground">{apartment.location}</div>
           <div className="mt-1 text-sm text-muted-foreground">{apartment.mission}</div>
+        </button>
+        <div className="flex shrink-0 items-start gap-2">
+          <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{apartment.type}</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
+            aria-label={`ערוך דירה ${apartment.location}`}
+          >
+            <Pencil size={12} />
+            ערוך
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeactivate();
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-xs text-status-danger-text hover:bg-destructive/5"
+            aria-label={`מחק דירה ${apartment.location}`}
+          >
+            <Trash2 size={12} />
+            מחק
+          </button>
         </div>
-        <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{apartment.type}</span>
       </div>
-      {apartment.notes && <p className="mt-3 text-xs leading-5 text-muted-foreground">{apartment.notes}</p>}
-    </button>
+      {apartment.notes && (
+        <button type="button" onClick={onClick} className="mt-3 block w-full text-right">
+          <p className="text-xs leading-5 text-muted-foreground">{apartment.notes}</p>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -544,8 +588,8 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       if (!result.data) {
         toast({
           variant: "destructive",
-          title: "נטרול הדירה נכשל",
-          description: result.error || "לא ניתן לנטרל את הדירה",
+          title: "מחיקת הדירה נכשלה",
+          description: result.error || "לא ניתן להסתיר את הדירה",
         });
         setIsSaving(false);
         return;
@@ -554,7 +598,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       await loadApartments();
       setSettingsModal(null);
       toast({
-        title: "הדירה נוטרלה",
+        title: "הדירה הוסתרה",
         description: settingsModal.apartment.location,
       });
       setIsSaving(false);
@@ -565,8 +609,8 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     if (!result.data) {
       toast({
         variant: "destructive",
-        title: "נטרול הפריט נכשל",
-        description: result.error || "לא ניתן לנטרל את פריט התקן",
+        title: "מחיקת הפריט נכשלה",
+        description: result.error || "לא ניתן להסתיר את פריט התקן",
       });
       setIsSaving(false);
       return;
@@ -575,31 +619,41 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     await loadItems(settingsModal.apartment.apartment_id);
     setSettingsModal(null);
     toast({
-      title: "פריט התקן נוטרל",
+      title: "הפריט הוסתר",
       description: settingsModal.item.item_name,
     });
     setIsSaving(false);
   }
 
-  async function handleSeedDemoData() {
-    setIsSaving(true);
-    const result = await supplyControlApi.seedSupplyDemoData();
-    if (!result.data) {
+  async function handleCopyReportLink(reportLink: string) {
+    if (!reportLink) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(reportLink);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = reportLink;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      toast({
+        title: "הקישור הועתק",
+        description: "קישור הדיווח מוכן לשיתוף או להדפסה.",
+      });
+    } catch {
       toast({
         variant: "destructive",
-        title: "טעינת נתוני הדמה נכשלה",
-        description: result.error || "לא ניתן לטעון את נתוני הדמה",
+        title: "העתקת הקישור נכשלה",
+        description: "אפשר להעתיק ידנית משדה הקישור.",
       });
-      setIsSaving(false);
-      return;
     }
-
-    await loadApartments();
-    toast({
-      title: "נתוני הדמה נטענו",
-      description: `דירות: ${result.data.apartments}, פריטים: ${result.data.items}`,
-    });
-    setIsSaving(false);
   }
 
   const itemColumns = [
@@ -653,8 +707,8 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
             }}
             className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-status-danger-text hover:bg-destructive/5"
           >
-            <Power size={12} />
-            נטרל
+            <Trash2 size={12} />
+            מחק
           </button>
         </div>
       ),
@@ -757,7 +811,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                     ) : (
                       <>
                         <div className="overflow-hidden rounded-xl border border-border">
-                          <div className="grid grid-cols-[8rem_7rem_minmax(0,1fr)] gap-3 bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground">
+                          <div className="hidden grid-cols-[8rem_7rem_minmax(0,1fr)] gap-3 bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground sm:grid">
                             <div>תאריך</div>
                             <div>מדווח</div>
                             <div>הערות</div>
@@ -768,12 +822,21 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                                 key={report.report_id}
                                 type="button"
                                 onClick={() => void openReportDetails(report.report_id)}
-                                className="grid w-full grid-cols-[8rem_7rem_minmax(0,1fr)] gap-3 px-4 py-4 text-right transition-colors hover:bg-muted/30"
+                                className="grid w-full gap-3 px-4 py-4 text-right transition-colors hover:bg-muted/30 sm:grid-cols-[8rem_7rem_minmax(0,1fr)]"
                               >
-                                <div className="text-sm text-foreground">{formatSupplyReportDateTime(report.reported_at)}</div>
-                                <div className="text-sm text-foreground">{report.reporter_initials || "—"}</div>
-                                <div className="truncate text-sm text-muted-foreground">
-                                  {report.general_notes || "—"}
+                                <div className="space-y-1 sm:contents">
+                                  <div className="text-xs text-muted-foreground sm:hidden">תאריך</div>
+                                  <div className="text-sm text-foreground">{formatSupplyReportDateTime(report.reported_at)}</div>
+                                </div>
+                                <div className="space-y-1 sm:contents">
+                                  <div className="text-xs text-muted-foreground sm:hidden">מדווח</div>
+                                  <div className="text-sm text-foreground">{report.reporter_initials || "—"}</div>
+                                </div>
+                                <div className="space-y-1 sm:contents">
+                                  <div className="text-xs text-muted-foreground sm:hidden">הערות</div>
+                                  <div className="text-sm text-muted-foreground sm:truncate">
+                                    {report.general_notes || "—"}
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -815,7 +878,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
             <TabsContent value="settings" className="mt-6 space-y-6">
               <PageHeader
                 title="הגדרות בקרת אספקה"
-                subtitle="ניהול דירות ותקן אספקה קבוע לכל דירה"
+                subtitle="ניהול דירות ופריטי אספקה קבועים לכל דירה"
                 action={
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <button
@@ -825,15 +888,6 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                     >
                       <Plus size={15} />
                       הוסף דירה
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleSeedDemoData()}
-                      disabled={isSaving}
-                      className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
-                    >
-                      <DatabaseZap size={15} />
-                      טען נתוני דמה
                     </button>
                   </div>
                 }
@@ -870,7 +924,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                       </div>
                     ) : filteredApartments.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                        אין עדיין דירות פעילות. אפשר להוסיף דירה חדשה או לטעון נתוני דמה.
+                        אין עדיין דירות פעילות. אפשר להוסיף דירה חדשה כדי להתחיל.
                       </div>
                     ) : (
                       filteredApartments.map((apartment) => (
@@ -879,6 +933,8 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                           apartment={apartment}
                           isSelected={apartment.apartment_id === selectedApartmentId}
                           onClick={() => setSelectedApartmentId(apartment.apartment_id)}
+                          onEdit={() => openEditApartmentModal(apartment)}
+                          onDeactivate={() => setSettingsModal({ type: "deactivateApartment", apartment })}
                         />
                       ))
                     )}
@@ -895,27 +951,19 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                           </CardTitle>
                           <p className="mt-1 text-sm text-muted-foreground">
                             {selectedApartment
-                              ? "עריכת פרטי הדירה ותקן האספקה הקבוע שלה."
-                              : "לאחר בחירת דירה יוצגו כאן פרטי הדירה והתקן הקבוע שלה."}
+                              ? "פרטי הדירה, קישור הדיווח והתקן הקבוע שלה."
+                              : "לאחר בחירת דירה יוצגו כאן פרטי הדירה וקישור הדיווח שלה."}
                           </p>
                         </div>
                         {selectedApartment && (
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => openEditApartmentModal(selectedApartment)}
-                              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-                            >
-                              <Pencil size={14} />
-                              ערוך דירה
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => setSettingsModal({ type: "deactivateApartment", apartment: selectedApartment })}
                               className="inline-flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-status-danger-text hover:bg-destructive/5"
                             >
-                              <Power size={14} />
-                              נטרל דירה
+                              <Trash2 size={14} />
+                              מחק דירה
                             </button>
                           </div>
                         )}
@@ -949,14 +997,62 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                     </CardContent>
                   </Card>
 
+                  {selectedApartment && (
+                    <Card className="shadow-card">
+                      <CardHeader className="gap-2">
+                        <CardTitle className="text-base">קישור דיווח</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          ניתן לשתף את הקישור או להציג את ה-QR לצוות שממלא את הדיווח בשטח.
+                        </p>
+                      </CardHeader>
+                      <CardContent className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_13rem] lg:items-start">
+                        <div className="space-y-3">
+                          <label className="flex flex-col gap-2 text-sm">
+                            <span className="font-medium text-foreground">קישור דיווח</span>
+                            <input
+                              readOnly
+                              value={buildSupplyReportLink(selectedApartment.report_token)}
+                              className="h-11 rounded-md border border-border bg-muted/20 px-3 text-left text-sm"
+                            />
+                          </label>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyReportLink(buildSupplyReportLink(selectedApartment.report_token))}
+                              className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
+                            >
+                              <Copy size={14} />
+                              העתק קישור
+                            </button>
+                            <a
+                              href={buildSupplyReportLink(selectedApartment.report_token)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+                            >
+                              <ExternalLink size={14} />
+                              פתח טופס דיווח
+                            </a>
+                          </div>
+                        </div>
+
+                        <div className="mx-auto w-fit rounded-xl border border-border bg-white p-3 shadow-sm">
+                          <QRCodeSVG
+                            value={buildSupplyReportLink(selectedApartment.report_token)}
+                            size={164}
+                            includeMargin
+                            title={`QR לדיווח ${selectedApartment.location}`}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <Card className="shadow-card">
                     <CardHeader className="gap-4">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <CardTitle className="text-base">תקן אספקה קבוע</CardTitle>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            פריט | קטגוריה | ערך נדרש | סוג דרישה | צילום חובה | פעולות
-                          </p>
+                          <CardTitle className="text-base">פריטי אספקה</CardTitle>
                         </div>
                         {selectedApartment && (
                           <button
@@ -1163,7 +1259,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
               alt={`תמונה ${lightboxIndex + 1}`}
               className="max-h-[70vh] w-full rounded-lg object-contain"
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setLightboxIndex((current) => Math.max(0, current - 1))}
@@ -1337,15 +1433,15 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       <Modal
         open={settingsModal?.type === "deactivateApartment" || settingsModal?.type === "deactivateItem"}
         onClose={() => !isSaving && setSettingsModal(null)}
-        title="אישור נטרול"
+        title={settingsModal?.type === "deactivateApartment" ? "מחיקת דירה" : "מחיקת פריט"}
         width="max-w-md"
       >
         <div className="space-y-4 text-sm">
           <p className="leading-6 text-muted-foreground">
             {settingsModal?.type === "deactivateApartment"
-              ? `הדירה "${settingsModal.apartment.location}" תסומן כלא פעילה ולא תופיע במסכי הניהול והדיווח.`
+              ? "הדירה תוסתר מהמערכת ולא תופיע בדיווחים חדשים. הנתונים והדיווחים הקיימים לא יימחקו."
               : settingsModal?.type === "deactivateItem"
-                ? `הפריט "${settingsModal.item.item_name}" יוסר מהתקן הפעיל של הדירה "${settingsModal.apartment.location}".`
+                ? `הפריט יוסתר מהתקן הפעיל של הדירה "${settingsModal.apartment.location}" בלי למחוק דיווחים קיימים.`
                 : ""}
           </p>
           <div className="flex justify-end gap-2">
@@ -1362,7 +1458,7 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
               disabled={isSaving}
               className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-60"
             >
-              {isSaving ? "שומר..." : "נטרל"}
+              {isSaving ? "שומר..." : settingsModal?.type === "deactivateApartment" ? "מחק דירה" : "מחק"}
             </button>
           </div>
         </div>

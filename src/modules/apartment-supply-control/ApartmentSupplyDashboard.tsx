@@ -95,6 +95,53 @@ function IssueCategoryBars({
   );
 }
 
+function ActivityBars({
+  items,
+  emptyMessage,
+}: {
+  items: Array<{ label: string; value: number; fill: string }>;
+  emptyMessage: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  const maxValue = Math.max(...items.map((item) => item.value), 1);
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const width = Math.max((item.value / maxValue) * 100, item.value > 0 ? 10 : 0);
+
+        return (
+          <div
+            key={item.label}
+            className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,12rem)_1fr_3rem] sm:items-center sm:gap-3"
+          >
+            <div className="min-w-0 text-sm font-medium text-foreground">{item.label}</div>
+            <div className="h-3 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full transition-[width]"
+                style={{
+                  width: `${width}%`,
+                  backgroundColor: item.fill,
+                }}
+              />
+            </div>
+            <div className="text-right text-sm font-medium tabular-nums text-foreground sm:text-left">
+              {item.value}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function KpiCard({
   title,
   value,
@@ -473,6 +520,40 @@ export const ApartmentSupplyDashboard: React.FC<ApartmentSupplyDashboardProps> =
                     <div className="text-xs text-muted-foreground">
                       מוצגים פריטים שסומנו כ"חסר" או "חלקי" בחודש שנבחר.
                     </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-2">
+                <Card className="shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">טופ 3 דירות עם הכי הרבה חוסרים</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ActivityBars
+                      items={summary.topIssueApartments.map((entry) => ({
+                        label: formatApartmentOptionLabel(entry.apartment),
+                        value: entry.issueItems,
+                        fill: "#dc2626",
+                      }))}
+                      emptyMessage="לא נמצאו חוסרים בחודש שנבחר"
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">פעילות לפי מדווח</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ActivityBars
+                      items={summary.reporterActivity.map((entry) => ({
+                        label: entry.reporter,
+                        value: entry.reportsCount,
+                        fill: "#2563eb",
+                      }))}
+                      emptyMessage="אין פעילות מדווחים בחודש שנבחר"
+                    />
                   </CardContent>
                 </Card>
               </div>

@@ -35,7 +35,7 @@ const standardItems: SupplyStandardItem[] = [
     item_name: "מיטה",
     required_value: "קיים",
     required_type: "exists",
-    photo_required: true,
+    photo_required: false,
     active: true,
   },
   {
@@ -136,6 +136,20 @@ describe("ApartmentSupplyFieldReportPage", () => {
     expect(supplyControlApi.createSupplyReport).not.toHaveBeenCalled();
   });
 
+  it("blocks submit when a required photo category is missing", async () => {
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("מיטה");
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+
+    expect(await screen.findByText("יש לצרף תמונות לכל הקטגוריות המסומנות כחובה")).toBeInTheDocument();
+    expect(screen.getByText("חובה לצרף תמונה לקטגוריה זו")).toBeInTheDocument();
+    expect(supplyControlApi.createSupplyReport).not.toHaveBeenCalled();
+  });
+
   it("reveals actual value when an item is marked partial", async () => {
     render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
 
@@ -220,6 +234,9 @@ describe("ApartmentSupplyFieldReportPage", () => {
     render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
 
     await screen.findByText("מיטה");
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
     fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
       target: { value: "מ.ש" },
     });
@@ -248,6 +265,9 @@ describe("ApartmentSupplyFieldReportPage", () => {
 
     const bedContainer = (await screen.findByText("מיטה")).closest(".rounded-xl");
     expect(bedContainer).not.toBeNull();
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
       target: { value: "מ.ש" },
@@ -304,6 +324,9 @@ describe("ApartmentSupplyFieldReportPage", () => {
 
     const bedContainer = (await screen.findByText("מיטה")).closest(".rounded-xl");
     expect(bedContainer).not.toBeNull();
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
       target: { value: "מ.ש" },
@@ -374,6 +397,9 @@ describe("ApartmentSupplyFieldReportPage", () => {
     fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
       target: { value: "מ.ש" },
     });
+    const initialFileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const initialFile = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(initialFileInput, { target: { files: [initialFile] } });
     fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
     expect(await screen.findByRole("button", { name: "ערוך דיווח" })).toBeInTheDocument();
 
@@ -405,6 +431,9 @@ describe("ApartmentSupplyFieldReportPage", () => {
     render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
 
     await screen.findByText("מיטה");
+    const fileInput = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
     fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
       target: { value: "מ.ש" },
     });
