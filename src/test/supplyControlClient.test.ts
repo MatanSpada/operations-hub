@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createSupplyReport,
   createSupplyApartment,
+  getSupplyReportingContext,
   createSupplyStandardItem,
   seedSupplyDemoData,
   updateSupplyApartment,
@@ -155,5 +157,74 @@ describe("supply control client actions", () => {
     await seedSupplyDemoData();
 
     expect(postActionDetailed).toHaveBeenCalledWith("supply_seed_demo_data", {});
+  });
+
+  it("maps get reporting context params to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        apartment: {
+          apartment_id: "apt-1",
+          location: "עזרי",
+          mission: "ורד",
+          type: "דירה",
+          active: true,
+        },
+        standardItems: [],
+      },
+    });
+
+    await getSupplyReportingContext({ reportToken: "demo_ezri" });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_get_reporting_context", {
+      apartmentId: undefined,
+      reportToken: "demo_ezri",
+    });
+  });
+
+  it("maps create report payload to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        report: {
+          report_id: "rep-1",
+          apartment_id: "apt-1",
+          reporter_initials: "מ.ש",
+          reported_at: "2026-05-19T09:00:00.000Z",
+          overall_status: "partial",
+        },
+        items_count: 2,
+      },
+    });
+
+    await createSupplyReport({
+      apartment_id: "apt-1",
+      reporter_initials: "מ.ש",
+      general_notes: "חסר ציוד",
+      items: [
+        {
+          standard_item_id: "std-1",
+          item_name: "מיטה",
+          required_value: "13",
+          reported_status: "partial",
+          actual_value: "10",
+          item_notes: "חסרות 3",
+        },
+      ],
+    });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_create_report", {
+      apartment_id: "apt-1",
+      reporter_initials: "מ.ש",
+      general_notes: "חסר ציוד",
+      items: [
+        {
+          standard_item_id: "std-1",
+          item_name: "מיטה",
+          required_value: "13",
+          reported_status: "partial",
+          actual_value: "10",
+          item_notes: "חסרות 3",
+        },
+      ],
+    });
   });
 });

@@ -139,6 +139,12 @@ function doPost(e) {
     if (action === "supply_get_report_details") {
       return getSupplyReportDetailsAction_(payload);
     }
+    if (action === "supply_get_reporting_context") {
+      return getSupplyReportingContextAction_(payload);
+    }
+    if (action === "supply_create_report") {
+      return createSupplyReportAction_(payload);
+    }
     if (action === "supply_create_apartment") {
       return createSupplyApartmentAction_(payload);
     }
@@ -907,6 +913,86 @@ function getSupplyReportDetailsAction_(payload) {
   return jsonResponse_({
     success: true,
     data: details,
+  });
+}
+
+function getSupplyReportingContextAction_(payload) {
+  const apartment = resolveSupplyReportingApartment_(payload);
+  if (!apartment) {
+    throw new Error("Supply apartment not found");
+  }
+
+  return jsonResponse_({
+    success: true,
+    data: {
+      apartment: apartment,
+      standardItems: getSupplyStandardItemsData_(apartment.apartment_id),
+    },
+  });
+}
+
+function createSupplyReportAction_(payload) {
+  const apartmentId = stringValue_(payload.apartment_id || payload.apartmentId);
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+
+  const apartment = findSupplyApartmentById_(apartmentId);
+  if (!apartment) {
+    throw new Error("Supply apartment not found");
+  }
+
+  const reporterInitials = stringValue_(payload.reporter_initials || payload.reporterInitials);
+  if (!reporterInitials) {
+    throw new Error("Missing reporter initials");
+  }
+
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  if (rawItems.length === 0) {
+    throw new Error("Missing supply report items");
+  }
+
+  const standardItems = getSupplyStandardItemsData_(apartmentId);
+  const standardItemsById = {};
+  standardItems.forEach(function (item) {
+    standardItemsById[item.standard_item_id] = item;
+  });
+
+  const reportId = generateSupplyReportId_();
+  const reportedAt = nowIsoString_();
+  const generalNotes = stringValue_(
+    payload.general_notes !== undefined ? payload.general_notes : payload.generalNotes
+  );
+
+  const reportItems = rawItems.map(function (itemPayload, index) {
+    return buildSupplyReportItemRecord_(itemPayload, {
+      reportId: reportId,
+      apartmentId: apartmentId,
+      standardItemsById: standardItemsById,
+      itemIndex: index,
+    });
+  });
+
+  const reportRecord = {
+    report_id: reportId,
+    apartment_id: apartmentId,
+    reporter_initials: reporterInitials,
+    reported_at: reportedAt,
+    general_notes: generalNotes,
+    overall_status: computeSupplyOverallStatus_(reportItems, generalNotes),
+  };
+
+  appendSupplyRow_(SUPPLY_SHEETS.REPORTS, reportRecord);
+  reportItems.forEach(function (itemRecord) {
+    appendSupplyRow_(SUPPLY_SHEETS.REPORT_ITEMS, itemRecord);
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: {
+      report: normalizeSupplyReportRow_(reportRecord),
+      items_count: reportItems.length,
+    },
   });
 }
 
@@ -2196,6 +2282,20 @@ function getSupplyApartmentsData_() {
     });
 }
 
+function resolveSupplyReportingApartment_(payload) {
+  const apartmentId = stringValue_(payload.apartmentId || payload.apartment_id);
+  if (apartmentId) {
+    return findSupplyApartmentById_(apartmentId);
+  }
+
+  const reportToken = stringValue_(payload.reportToken || payload.report_token);
+  if (reportToken) {
+    return findSupplyApartmentByReportToken_(reportToken);
+  }
+
+  throw new Error("Missing supply apartment ID or report token");
+}
+
 function getAllSupplyApartmentRows_() {
   return getSupplyRows_(SUPPLY_SHEETS.APARTMENTS, ["apartment_id"]);
 }
@@ -2367,6 +2467,15 @@ function generateSupplyStandardItemId_(apartmentId, itemName) {
       .slice(0, 24);
   }
   return "std_" + String(apartmentId || "apt").slice(0, 20) + "_" + (normalizedName || Utilities.getUuid().slice(0, 8));
+}
+
+function generateSupplyReportId_() {
+  return "rep_" + new Date().getTime() + "_" + Math.floor(Math.random() * 10000);
+}
+
+function generateSupplyReportItemId_(reportId, standardItemId, itemIndex) {
+  const normalizedItemId = stringValue_(standardItemId).slice(0, 32) || Utilities.getUuid().slice(0, 8);
+  return "rpt_item_" + String(reportId || "rep").slice(0, 24) + "_" + normalizedItemId + "_" + Number(itemIndex || 0);
 }
 
 function nowIsoString_() {
@@ -2612,6 +2721,18 @@ function findSupplyApartmentById_(apartmentId) {
   return null;
 }
 
+function findSupplyApartmentByReportToken_(reportToken) {
+  const apartments = getSupplyApartmentsData_();
+
+  for (var index = 0; index < apartments.length; index++) {
+    if (stringValue_(apartments[index].report_token) === String(reportToken)) {
+      return apartments[index];
+    }
+  }
+
+  return null;
+}
+
 function normalizeSupplyApartmentRow_(row) {
   return {
     apartment_id: stringValue_(row.apartment_id),
@@ -2664,6 +2785,69 @@ function normalizeSupplyReportItemRow_(row) {
   };
 }
 
+function buildSupplyReportItemRecord_(payload, options) {
+  const standardItemId = stringValue_(payload.standard_item_id || payload.standardItemId);
+  if (!standardItemId) {
+    throw new Error("Missing supply standard item ID");
+  }
+
+  const standardItem = options.standardItemsById[standardItemId];
+  if (!standardItem || standardItem.apartment_id !== options.apartmentId) {
+    throw new Error("Supply standard item not found for apartment: " + standardItemId);
+  }
+
+  const rawReportedStatus = stringValue_(payload.reported_status || payload.reportedStatus) || "ok";
+  if (!isAllowedSupplyReportedStatus_(rawReportedStatus)) {
+    throw new Error("Invalid reported status for supply item: " + standardItem.item_name);
+  }
+  const reportedStatus = normalizeSupplyReportedStatus_(rawReportedStatus);
+  const actualValue = stringValue_(payload.actual_value !== undefined ? payload.actual_value : payload.actualValue);
+  const itemNotes = stringValue_(payload.item_notes !== undefined ? payload.item_notes : payload.itemNotes);
+
+  if (reportedStatus === "partial" && !actualValue) {
+    throw new Error("Missing actual value for partial supply item: " + standardItem.item_name);
+  }
+
+  return {
+    report_item_id: generateSupplyReportItemId_(options.reportId, standardItemId, options.itemIndex),
+    report_id: options.reportId,
+    standard_item_id: standardItemId,
+    item_name: stringValue_(payload.item_name || payload.itemName || standardItem.item_name),
+    required_value: stringValue_(
+      payload.required_value !== undefined
+        ? payload.required_value
+        : payload.requiredValue !== undefined
+          ? payload.requiredValue
+          : standardItem.required_value
+    ),
+    reported_status: reportedStatus,
+    actual_value: actualValue,
+    item_notes: itemNotes,
+  };
+}
+
+function computeSupplyOverallStatus_(items, generalNotes) {
+  const hasMissing = items.some(function (item) {
+    return item.reported_status === "missing";
+  });
+  if (hasMissing) {
+    return "missing";
+  }
+
+  const hasPartial = items.some(function (item) {
+    return item.reported_status === "partial";
+  });
+  if (hasPartial) {
+    return "partial";
+  }
+
+  if (stringValue_(generalNotes)) {
+    return "issue";
+  }
+
+  return "ok";
+}
+
 function normalizeSupplyReportPhotoRow_(row) {
   return {
     photo_id: stringValue_(row.photo_id),
@@ -2687,6 +2871,11 @@ function normalizeSupplyReportedStatus_(value) {
   return normalized === "ok" || normalized === "missing" || normalized === "partial" || normalized === "not_relevant"
     ? normalized
     : "not_relevant";
+}
+
+function isAllowedSupplyReportedStatus_(value) {
+  const normalized = stringValue_(value);
+  return normalized === "ok" || normalized === "missing" || normalized === "partial" || normalized === "not_relevant";
 }
 
 function normalizeSupplyPhotoCategory_(value) {

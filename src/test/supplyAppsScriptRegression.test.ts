@@ -13,6 +13,8 @@ describe("supply Apps Script regression guards", () => {
       "supply_get_standard_items",
       "supply_get_reports_by_apartment",
       "supply_get_report_details",
+      "supply_get_reporting_context",
+      "supply_create_report",
       "supply_create_apartment",
       "supply_update_apartment",
       "supply_deactivate_apartment",

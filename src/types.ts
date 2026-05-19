@@ -169,6 +169,8 @@ export type SupplyRequiredType = "exists" | "quantity" | "text";
 
 export type SupplyReportedStatus = "ok" | "missing" | "partial" | "not_relevant";
 
+export type SupplyOverallStatus = "ok" | "partial" | "missing" | "issue";
+
 export type SupplyPhotoCategory = "מקרר" | "ציוד ניקוי אקסטרה" | "מצעים" | "חריגים";
 
 export interface SupplyApartment {
@@ -223,7 +225,7 @@ export interface SupplyReport {
   reporter_initials?: string;
   reported_at: string;
   general_notes?: string;
-  overall_status?: string;
+  overall_status?: SupplyOverallStatus;
 }
 
 export interface SupplyReportItem {
@@ -265,6 +267,37 @@ export interface SupplyReportDetails {
   apartment: SupplyApartment;
   items: SupplyReportItem[];
   photos: SupplyReportPhoto[];
+}
+
+export interface SupplyReportingContextParams {
+  apartmentId?: string;
+  reportToken?: string;
+}
+
+export interface SupplyReportingContext {
+  apartment: SupplyApartment;
+  standardItems: SupplyStandardItem[];
+}
+
+export interface SupplyReportItemInput {
+  standard_item_id: string;
+  item_name: string;
+  required_value?: string;
+  reported_status: SupplyReportedStatus;
+  actual_value?: string;
+  item_notes?: string;
+}
+
+export interface SupplyCreateReportInput {
+  apartment_id: string;
+  reporter_initials: string;
+  general_notes?: string;
+  items: SupplyReportItemInput[];
+}
+
+export interface SupplyCreateReportResult {
+  report: SupplyReport;
+  items_count: number;
 }
 
 // ── API Response ─────────────────────────────────────────────────────

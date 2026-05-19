@@ -2,6 +2,10 @@ import { ApiActionResult, postActionDetailed } from "@/api";
 import {
   SupplyApartment,
   SupplyApartmentInput,
+  SupplyCreateReportInput,
+  SupplyCreateReportResult,
+  SupplyReportingContext,
+  SupplyReportingContextParams,
   SupplyReportDetails,
   SupplyReportsByApartmentResult,
   SupplyReportsQueryOptions,
@@ -9,8 +13,10 @@ import {
   SupplyStandardItem,
 } from "@/types";
 import {
+  normalizeSupplyCreateReportResult,
   normalizeSupplyApartmentResponse,
   normalizeSupplyApartments,
+  normalizeSupplyReportingContext,
   normalizeSupplyReportDetails,
   normalizeSupplyReportsByApartment,
   normalizeSupplyStandardItems,
@@ -81,6 +87,33 @@ export async function getSupplyReportDetails(reportId: string): Promise<ApiActio
   if (!details) return buildErrorResult("Supply report details not found");
 
   return { data: details };
+}
+
+export async function getSupplyReportingContext(
+  params: SupplyReportingContextParams,
+): Promise<ApiActionResult<SupplyReportingContext>> {
+  const result = await postActionDetailed<unknown>("supply_get_reporting_context", {
+    apartmentId: params.apartmentId,
+    reportToken: params.reportToken,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to load supply reporting context");
+
+  const context = normalizeSupplyReportingContext(result.data);
+  if (!context) return buildErrorResult("Supply reporting context not found");
+
+  return { data: context };
+}
+
+export async function createSupplyReport(
+  input: SupplyCreateReportInput,
+): Promise<ApiActionResult<SupplyCreateReportResult>> {
+  const result = await postActionDetailed<unknown>("supply_create_report", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to create supply report");
+
+  const reportResult = normalizeSupplyCreateReportResult(result.data);
+  if (!reportResult) return buildErrorResult("Supply report creation result is invalid");
+
+  return { data: reportResult };
 }
 
 export async function createSupplyApartment(
@@ -181,6 +214,8 @@ export const supplyControlApi = {
   getSupplyStandardItems,
   getSupplyReportsByApartment,
   getSupplyReportDetails,
+  getSupplyReportingContext,
+  createSupplyReport,
   createSupplyApartment,
   updateSupplyApartment,
   deactivateSupplyApartment,

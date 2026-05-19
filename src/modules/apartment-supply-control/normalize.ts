@@ -1,10 +1,13 @@
 import {
   SupplyApartment,
+  SupplyCreateReportResult,
   SupplyPhotoCategory,
+  SupplyReportingContext,
   SupplyReport,
   SupplyReportDetails,
   SupplyReportItem,
   SupplyReportPhoto,
+  SupplyOverallStatus,
   SupplyReportedStatus,
   SupplyReportsByApartmentResult,
   SupplyReportsQueryOptions,
@@ -19,6 +22,17 @@ type RawReportDetailsPayload = {
   apartment: unknown;
   items: unknown;
   photos: unknown;
+};
+
+type RawReportingContextPayload = {
+  apartment: unknown;
+  standardItems?: unknown;
+  standard_items?: unknown;
+};
+
+type RawCreateReportPayload = {
+  report: unknown;
+  items_count?: unknown;
 };
 
 const DEFAULT_REPORT_LIMIT = 30;
@@ -57,6 +71,10 @@ function normalizeReportedStatus(value: unknown): SupplyReportedStatus {
   return value === "ok" || value === "missing" || value === "partial" || value === "not_relevant"
     ? value
     : "not_relevant";
+}
+
+function normalizeOverallStatus(value: unknown): SupplyOverallStatus {
+  return value === "missing" || value === "partial" || value === "issue" ? value : "ok";
 }
 
 function normalizePhotoCategory(value: unknown): SupplyPhotoCategory {
@@ -138,7 +156,7 @@ export function normalizeSupplyReport(row: RawRow): SupplyReport {
     reporter_initials: readOptionalString(row, ["reporter_initials", "ReporterInitials"]),
     reported_at: readString(row, ["reported_at", "ReportedAt"]),
     general_notes: readOptionalString(row, ["general_notes", "GeneralNotes"]),
-    overall_status: readOptionalString(row, ["overall_status", "OverallStatus"]),
+    overall_status: normalizeOverallStatus(readValue(row, ["overall_status", "OverallStatus"])),
   };
 }
 
@@ -233,5 +251,36 @@ export function normalizeSupplyReportDetails(payload: unknown): SupplyReportDeta
     apartment: normalizeSupplyApartment(normalizedApartmentRow),
     items: asRows(source.items).map(normalizeSupplyReportItem),
     photos: asRows(source.photos).map(normalizeSupplyReportPhoto),
+  };
+}
+
+export function normalizeSupplyReportingContext(payload: unknown): SupplyReportingContext | null {
+  const source = payload && typeof payload === "object" ? (payload as RawReportingContextPayload) : null;
+  if (!source) return null;
+
+  const apartment = normalizeSupplyApartmentResponse(source.apartment);
+  if (!apartment) return null;
+
+  return {
+    apartment,
+    standardItems: normalizeSupplyStandardItems(
+      source.standardItems ?? source.standard_items ?? [],
+      apartment.apartment_id,
+    ),
+  };
+}
+
+export function normalizeSupplyCreateReportResult(payload: unknown): SupplyCreateReportResult | null {
+  const source = payload && typeof payload === "object" ? (payload as RawCreateReportPayload) : null;
+  if (!source) return null;
+
+  const reportRow = asRow(source.report);
+  if (!reportRow) return null;
+
+  const itemsCount = Number(source.items_count ?? 0);
+
+  return {
+    report: normalizeSupplyReport(reportRow),
+    items_count: Number.isFinite(itemsCount) ? itemsCount : 0,
   };
 }
