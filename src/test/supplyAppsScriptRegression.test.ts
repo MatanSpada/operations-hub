@@ -11,6 +11,7 @@ describe("supply Apps Script regression guards", () => {
       "supply_get_apartments",
       "supply_get_apartment",
       "supply_get_standard_items",
+      "supply_get_photo_requirements",
       "supply_get_reports_by_apartment",
       "supply_get_report_details",
       "supply_get_reporting_context",
@@ -23,6 +24,10 @@ describe("supply Apps Script regression guards", () => {
       "supply_create_standard_item",
       "supply_update_standard_item",
       "supply_deactivate_standard_item",
+      "supply_create_photo_requirement",
+      "supply_update_photo_requirement",
+      "supply_deactivate_photo_requirement",
+      "supply_create_missing_default_photo_requirements",
       "supply_seed_demo_data",
     ].forEach((action) => {
       expect(codeGs).toContain(`"${action}"`);
@@ -38,6 +43,7 @@ describe("supply Apps Script regression guards", () => {
     expect(codeGs).toContain("function updateSupplyReportAction_(payload)");
     expect(codeGs).toContain('updateSupplyRowByField_(SUPPLY_SHEETS.REPORTS, "report_id", reportId');
     expect(codeGs).toContain('deleteSupplyRowsByField_(SUPPLY_SHEETS.REPORT_ITEMS, "report_id", reportId)');
+    expect(codeGs).not.toContain('throw new Error("Missing supply report items")');
   });
 
   it("uploads report photos through the dedicated Drive action", () => {
@@ -46,5 +52,14 @@ describe("supply Apps Script regression guards", () => {
     expect(codeGs).toContain("appendSupplyRow_(SUPPLY_SHEETS.REPORT_PHOTOS, photoRecord)");
     expect(codeGs).toContain("file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)");
     expect(codeGs).toContain('return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(String(fileId)) + "&sz=w1800"');
+  });
+
+  it("creates and normalizes the dedicated photo requirements sheet", () => {
+    expect(codeGs).toContain('PHOTO_REQUIREMENTS: "SupplyPhotoRequirements"');
+    expect(codeGs).toContain("function createSupplyPhotoRequirementsSheet_(spreadsheet)");
+    expect(codeGs).toContain("function ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentId)");
+    expect(codeGs).toContain("function normalizeSupplyPhotoRequirementRow_(row)");
+    expect(codeGs).toContain("ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentRecord.apartment_id)");
+    expect(codeGs).toContain("photoRequirements: getSupplyPhotoRequirementsData_(apartment.apartment_id)");
   });
 });

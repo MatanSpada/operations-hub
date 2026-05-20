@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSupplyReport,
   createSupplyApartment,
+  createSupplyPhotoRequirement,
   getSupplyReportDetails,
+  getSupplyPhotoRequirements,
   getSupplyReportsByApartment,
   getSupplyReportingContext,
   uploadSupplyReportPhotos,
@@ -10,6 +12,7 @@ import {
   seedSupplyDemoData,
   updateSupplyReport,
   updateSupplyApartment,
+  updateSupplyPhotoRequirement,
   updateSupplyStandardItem,
 } from "@/modules/apartment-supply-control/api";
 
@@ -174,6 +177,7 @@ describe("supply control client actions", () => {
           active: true,
         },
         standardItems: [],
+        photoRequirements: [],
       },
     });
 
@@ -182,6 +186,18 @@ describe("supply control client actions", () => {
     expect(postActionDetailed).toHaveBeenCalledWith("supply_get_reporting_context", {
       apartmentId: undefined,
       reportToken: "demo_ezri",
+    });
+  });
+
+  it("maps get photo requirements params to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: [],
+    });
+
+    await getSupplyPhotoRequirements("apt-1");
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_get_photo_requirements", {
+      apartmentId: "apt-1",
     });
   });
 
@@ -363,6 +379,59 @@ describe("supply control client actions", () => {
           notes: "",
         },
       ],
+    });
+  });
+
+  it("maps create photo requirement payload to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        photo_requirement_id: "photo-req-1",
+        apartment_id: "apt-1",
+        category: "מקרר",
+        required: true,
+        active: true,
+      },
+    });
+
+    await createSupplyPhotoRequirement({
+      apartment_id: "apt-1",
+      category: "מקרר",
+      required: true,
+      notes: "",
+    });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_create_photo_requirement", {
+      apartment_id: "apt-1",
+      category: "מקרר",
+      required: true,
+      notes: "",
+    });
+  });
+
+  it("maps update photo requirement payload to the correct Apps Script action", async () => {
+    postActionDetailed.mockResolvedValue({
+      data: {
+        photo_requirement_id: "photo-req-1",
+        apartment_id: "apt-1",
+        category: "מקרר",
+        required: false,
+        active: true,
+      },
+    });
+
+    await updateSupplyPhotoRequirement("photo-req-1", {
+      apartment_id: "apt-1",
+      category: "מקרר",
+      required: false,
+      notes: "אופציונלי",
+    });
+
+    expect(postActionDetailed).toHaveBeenCalledWith("supply_update_photo_requirement", {
+      photoRequirementId: "photo-req-1",
+      apartment_id: "apt-1",
+      category: "מקרר",
+      required: false,
+      notes: "אופציונלי",
     });
   });
 });

@@ -4,6 +4,8 @@ import {
   SupplyApartmentInput,
   SupplyCreateReportInput,
   SupplyCreateReportResult,
+  SupplyPhotoRequirement,
+  SupplyPhotoRequirementInput,
   SupplyReportingContext,
   SupplyReportingContextParams,
   SupplyReportDetails,
@@ -23,6 +25,7 @@ import {
   normalizeSupplyReportDetails,
   normalizeSupplyReportPhotos,
   normalizeSupplyReportsByApartment,
+  normalizeSupplyPhotoRequirements,
   normalizeSupplyStandardItems,
 } from "@/modules/apartment-supply-control/normalize";
 
@@ -62,6 +65,17 @@ export async function getSupplyStandardItems(apartmentId: string): Promise<ApiAc
 
   return {
     data: normalizeSupplyStandardItems(result.data, apartmentId),
+  };
+}
+
+export async function getSupplyPhotoRequirements(apartmentId: string): Promise<ApiActionResult<SupplyPhotoRequirement[]>> {
+  const result = await postActionDetailed<unknown[]>("supply_get_photo_requirements", {
+    apartmentId,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to load supply photo requirements");
+
+  return {
+    data: normalizeSupplyPhotoRequirements(result.data, apartmentId),
   };
 }
 
@@ -225,6 +239,61 @@ export async function deactivateSupplyStandardItem(
   return { data: result.data };
 }
 
+export async function updateSupplyPhotoRequirement(
+  photoRequirementId: string,
+  input: SupplyPhotoRequirementInput,
+): Promise<ApiActionResult<SupplyPhotoRequirement>> {
+  const result = await postActionDetailed<unknown>("supply_update_photo_requirement", {
+    photoRequirementId,
+    ...input,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to update supply photo requirement");
+
+  const requirements = normalizeSupplyPhotoRequirements([result.data], input.apartment_id);
+  const requirement = requirements[0];
+  if (!requirement) return buildErrorResult("Supply photo requirement not found after update");
+
+  return { data: requirement };
+}
+
+export async function createSupplyPhotoRequirement(
+  input: SupplyPhotoRequirementInput,
+): Promise<ApiActionResult<SupplyPhotoRequirement>> {
+  const result = await postActionDetailed<unknown>("supply_create_photo_requirement", input);
+  if (!result.data) return buildErrorResult(result.error || "Failed to create supply photo requirement");
+
+  const requirements = normalizeSupplyPhotoRequirements([result.data], input.apartment_id);
+  const requirement = requirements[0];
+  if (!requirement) return buildErrorResult("Supply photo requirement not found after creation");
+
+  return { data: requirement };
+}
+
+export async function createMissingSupplyPhotoRequirements(
+  apartmentId: string,
+): Promise<ApiActionResult<SupplyPhotoRequirement[]>> {
+  const result = await postActionDetailed<unknown[]>("supply_create_missing_default_photo_requirements", {
+    apartmentId,
+  });
+  if (!result.data) return buildErrorResult(result.error || "Failed to create missing supply photo requirements");
+
+  return {
+    data: normalizeSupplyPhotoRequirements(result.data, apartmentId),
+  };
+}
+
+export async function deactivateSupplyPhotoRequirement(
+  photoRequirementId: string,
+): Promise<ApiActionResult<{ photo_requirement_id: string; active: boolean }>> {
+  const result = await postActionDetailed<{ photo_requirement_id: string; active: boolean }>(
+    "supply_deactivate_photo_requirement",
+    { photoRequirementId },
+  );
+  if (!result.data) return buildErrorResult(result.error || "Failed to deactivate supply photo requirement");
+
+  return { data: result.data };
+}
+
 export async function seedSupplyDemoData(): Promise<ApiActionResult<{ apartments: number; items: number }>> {
   const result = await postActionDetailed<{ apartments: number; items: number }>(
     "supply_seed_demo_data",
@@ -239,6 +308,7 @@ export const supplyControlApi = {
   getSupplyApartments,
   getSupplyApartment,
   getSupplyStandardItems,
+  getSupplyPhotoRequirements,
   getSupplyReportsByApartment,
   getSupplyReportDetails,
   getSupplyReportingContext,
@@ -251,5 +321,9 @@ export const supplyControlApi = {
   createSupplyStandardItem,
   updateSupplyStandardItem,
   deactivateSupplyStandardItem,
+  updateSupplyPhotoRequirement,
+  createSupplyPhotoRequirement,
+  createMissingSupplyPhotoRequirements,
+  deactivateSupplyPhotoRequirement,
   seedSupplyDemoData,
 };
