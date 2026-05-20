@@ -173,6 +173,25 @@ export type SupplyOverallStatus = "ok" | "partial" | "missing" | "issue";
 
 export type SupplyPhotoCategory = "מקרר" | "ציוד ניקוי אקסטרה" | "מצעים" | "חריגים";
 
+export interface SupplyPhotoRequirement {
+  photo_requirement_id: string;
+  apartment_id: string;
+  category: SupplyPhotoCategory;
+  required: boolean;
+  active: boolean;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SupplyPhotoRequirementInput {
+  apartment_id: string;
+  category: SupplyPhotoCategory;
+  required: boolean;
+  active?: boolean;
+  notes?: string;
+}
+
 export interface SupplyApartment {
   apartment_id: string;
   location: string;
@@ -292,6 +311,7 @@ export interface SupplyReportingContextParams {
 export interface SupplyReportingContext {
   apartment: SupplyApartment;
   standardItems: SupplyStandardItem[];
+  photoRequirements: SupplyPhotoRequirement[];
 }
 
 export interface SupplyReportItemInput {

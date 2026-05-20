@@ -2,6 +2,7 @@ import {
   SupplyApartment,
   SupplyCreateReportResult,
   SupplyPhotoCategory,
+  SupplyPhotoRequirement,
   SupplyReportingContext,
   SupplyReport,
   SupplyReportDetails,
@@ -28,6 +29,8 @@ type RawReportingContextPayload = {
   apartment: unknown;
   standardItems?: unknown;
   standard_items?: unknown;
+  photoRequirements?: unknown;
+  photo_requirements?: unknown;
 };
 
 type RawCreateReportPayload = {
@@ -198,6 +201,19 @@ export function normalizeSupplyReportPhoto(row: RawRow): SupplyReportPhoto {
   };
 }
 
+export function normalizeSupplyPhotoRequirement(row: RawRow): SupplyPhotoRequirement {
+  return {
+    photo_requirement_id: readString(row, ["photo_requirement_id", "PhotoRequirementID", "PhotoRequirementId"]),
+    apartment_id: readString(row, ["apartment_id", "ApartmentID", "ApartmentId"]),
+    category: normalizePhotoCategory(readValue(row, ["category", "Category"])),
+    required: isSupplyPhotoRequired(readValue(row, ["required", "Required"])),
+    active: isSupplyRowActive(readValue(row, ["active", "Active"])),
+    notes: readOptionalString(row, ["notes", "Notes"]),
+    created_at: readOptionalString(row, ["created_at", "CreatedAt"]),
+    updated_at: readOptionalString(row, ["updated_at", "UpdatedAt"]),
+  };
+}
+
 export function buildSupplyPhotoDisplayUrl(driveFileId: string, size = 1600): string {
   return `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w${Math.max(200, Math.floor(size))}`;
 }
@@ -211,6 +227,13 @@ export function getSupplyPhotoDisplayUrl(photo: SupplyReportPhoto, size = 1600):
 
 export function normalizeSupplyReportPhotos(rows: unknown): SupplyReportPhoto[] {
   return asRows(rows).map(normalizeSupplyReportPhoto);
+}
+
+export function normalizeSupplyPhotoRequirements(rows: unknown, apartmentId: string): SupplyPhotoRequirement[] {
+  return asRows(rows)
+    .map(normalizeSupplyPhotoRequirement)
+    .filter((item) => item.active && item.apartment_id === apartmentId)
+    .sort((a, b) => a.category.localeCompare(b.category, "he"));
 }
 
 export function normalizeSupplyApartments(rows: unknown): SupplyApartment[] {
@@ -292,6 +315,10 @@ export function normalizeSupplyReportingContext(payload: unknown): SupplyReporti
     apartment,
     standardItems: normalizeSupplyStandardItems(
       source.standardItems ?? source.standard_items ?? [],
+      apartment.apartment_id,
+    ),
+    photoRequirements: normalizeSupplyPhotoRequirements(
+      source.photoRequirements ?? source.photo_requirements ?? [],
       apartment.apartment_id,
     ),
   };

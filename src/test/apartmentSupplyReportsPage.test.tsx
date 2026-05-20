@@ -176,6 +176,25 @@ describe("ApartmentSupplyControlPage reports", () => {
     });
   });
 
+  it("shows an empty checklist state when a report has no report items", async () => {
+    supplyControlApi.getSupplyReportDetails.mockResolvedValueOnce({
+      data: {
+        report: reports[0],
+        apartment: apartments[0],
+        items: [],
+        photos: [],
+      },
+    });
+
+    render(<ApartmentSupplyControlPage initialSection="reports" />);
+
+    await screen.findByText("מ.ש");
+    const reportButtons = screen.getAllByRole("button").filter((button) => button.textContent?.includes("מ.ש"));
+    fireEvent.click(reportButtons[0]);
+
+    expect(await screen.findByText("לא דווחו פריטי אספקה בדוח זה")).toBeInTheDocument();
+  });
+
   it("supports pagination with 30 reports per page", async () => {
     const manyReports = Array.from({ length: 31 }, (_, index) => ({
       report_id: `rep-${index + 1}`,

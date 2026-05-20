@@ -75,6 +75,36 @@ describe("ApartmentSupplyFieldReportPage", () => {
       data: {
         apartment,
         standardItems,
+        photoRequirements: [
+          {
+            photo_requirement_id: "photo-req-fridge",
+            apartment_id: apartment.apartment_id,
+            category: "מקרר",
+            required: true,
+            active: true,
+          },
+          {
+            photo_requirement_id: "photo-req-cleaning",
+            apartment_id: apartment.apartment_id,
+            category: "ציוד ניקוי אקסטרה",
+            required: false,
+            active: true,
+          },
+          {
+            photo_requirement_id: "photo-req-bedding",
+            apartment_id: apartment.apartment_id,
+            category: "מצעים",
+            required: false,
+            active: true,
+          },
+          {
+            photo_requirement_id: "photo-req-exceptions",
+            apartment_id: apartment.apartment_id,
+            category: "חריגים",
+            required: false,
+            active: true,
+          },
+        ],
       },
     });
     supplyControlApi.createSupplyReport.mockResolvedValue({
@@ -126,6 +156,59 @@ describe("ApartmentSupplyFieldReportPage", () => {
     expect(screen.getAllByText("מקרר").length).toBeGreaterThan(0);
     expect(screen.getAllByText("(חובה)")).toHaveLength(1);
     expect(screen.getByText("ציוד ניקוי אקסטרה")).toBeInTheDocument();
+  });
+
+  it("allows submitting a photo-only report when there are no standard items", async () => {
+    supplyControlApi.getSupplyReportingContext.mockResolvedValueOnce({
+      data: {
+        apartment,
+        standardItems: [],
+        photoRequirements: [
+          {
+            photo_requirement_id: "photo-req-fridge",
+            apartment_id: apartment.apartment_id,
+            category: "מקרר",
+            required: true,
+            active: true,
+          },
+        ],
+      },
+    });
+    supplyControlApi.createSupplyReport.mockResolvedValueOnce({
+      data: {
+        report: {
+          report_id: "rep-photo-only",
+          apartment_id: apartment.apartment_id,
+          reporter_initials: "מ.ש",
+          reported_at: "2026-05-19T10:00:00.000Z",
+          overall_status: "issue",
+        },
+        items_count: 0,
+      },
+    });
+
+    render(<ApartmentSupplyFieldReportPage reportToken="demo_ezri" />);
+
+    await screen.findByText("לא הוגדרו פריטי אספקה קבועים לדירה זו. אפשר עדיין לשלוח דיווח עם תמונות והערות.");
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["fake"], "fridge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("ראשי תיבות מדווח"), {
+      target: { value: "מ.ש" },
+    });
+    fireEvent.change(screen.getByLabelText("הערות / תקלות שנצפו בדירה"), {
+      target: { value: "דיווח עם תמונות בלבד" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "שלח דיווח" }));
+
+    await waitFor(() => {
+      expect(supplyControlApi.createSupplyReport).toHaveBeenCalledWith({
+        apartment_id: "apt_ezri",
+        reporter_initials: "מ.ש",
+        general_notes: "דיווח עם תמונות בלבד",
+        items: [],
+      });
+    });
   });
 
   it("requires reporter initials before submit", async () => {

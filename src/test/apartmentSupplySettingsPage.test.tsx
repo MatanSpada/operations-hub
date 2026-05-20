@@ -7,12 +7,16 @@ const { supplyControlApi } = vi.hoisted(() => ({
   supplyControlApi: {
     getSupplyApartments: vi.fn(),
     getSupplyStandardItems: vi.fn(),
+    getSupplyPhotoRequirements: vi.fn(),
     createSupplyApartment: vi.fn(),
     updateSupplyApartment: vi.fn(),
     deactivateSupplyApartment: vi.fn(),
     createSupplyStandardItem: vi.fn(),
     updateSupplyStandardItem: vi.fn(),
     deactivateSupplyStandardItem: vi.fn(),
+    createSupplyPhotoRequirement: vi.fn(),
+    updateSupplyPhotoRequirement: vi.fn(),
+    deactivateSupplyPhotoRequirement: vi.fn(),
     seedSupplyDemoData: vi.fn(),
   },
 }));
@@ -44,6 +48,23 @@ const items: SupplyStandardItem[] = [
   },
 ];
 
+const photoRequirements = [
+  {
+    photo_requirement_id: "photo-req-1",
+    apartment_id: "apt-1",
+    category: "מקרר" as const,
+    required: true,
+    active: true,
+  },
+  {
+    photo_requirement_id: "photo-req-2",
+    apartment_id: "apt-1",
+    category: "מצעים" as const,
+    required: false,
+    active: true,
+  },
+];
+
 describe("ApartmentSupplyControlPage settings", () => {
   beforeEach(() => {
     Object.values(supplyControlApi).forEach((fn) => fn.mockReset());
@@ -53,12 +74,17 @@ describe("ApartmentSupplyControlPage settings", () => {
     supplyControlApi.createSupplyStandardItem.mockResolvedValue({ data: items[0] });
     supplyControlApi.updateSupplyStandardItem.mockResolvedValue({ data: items[0] });
     supplyControlApi.deactivateSupplyStandardItem.mockResolvedValue({ data: { standard_item_id: items[0].standard_item_id, active: false } });
+    supplyControlApi.getSupplyPhotoRequirements.mockResolvedValue({ data: photoRequirements });
+    supplyControlApi.createSupplyPhotoRequirement.mockResolvedValue({ data: photoRequirements[0] });
+    supplyControlApi.updateSupplyPhotoRequirement.mockResolvedValue({ data: photoRequirements[0] });
+    supplyControlApi.deactivateSupplyPhotoRequirement.mockResolvedValue({ data: { photo_requirement_id: "photo-req-1", active: false } });
     supplyControlApi.seedSupplyDemoData.mockResolvedValue({ data: { apartments: 7, items: 43 } });
   });
 
   it("renders the settings tab and shows an empty state", async () => {
     supplyControlApi.getSupplyApartments.mockResolvedValue({ data: [] });
     supplyControlApi.getSupplyStandardItems.mockResolvedValue({ data: [] });
+    supplyControlApi.getSupplyPhotoRequirements.mockResolvedValue({ data: [] });
 
     render(<ApartmentSupplyControlPage initialSection="settings" />);
 
@@ -70,6 +96,7 @@ describe("ApartmentSupplyControlPage settings", () => {
   it("shows the selected apartment checklist when apartments and items are available", async () => {
     supplyControlApi.getSupplyApartments.mockResolvedValue({ data: [apartment] });
     supplyControlApi.getSupplyStandardItems.mockResolvedValue({ data: items });
+    supplyControlApi.getSupplyPhotoRequirements.mockResolvedValue({ data: photoRequirements });
 
     render(<ApartmentSupplyControlPage initialSection="settings" />);
 
@@ -90,11 +117,15 @@ describe("ApartmentSupplyControlPage settings", () => {
     expect(screen.getByRole("button", { name: "העתק קישור" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "פתח טופס דיווח" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(/supplyReportToken=/)).toBeInTheDocument();
+    expect(screen.getByText("דרישות תמונות")).toBeInTheDocument();
+    expect(screen.getByText("מקרר")).toBeInTheDocument();
+    expect(screen.getAllByText("מצעים").length).toBeGreaterThan(0);
   });
 
   it("defaults new standard items to required photos", async () => {
     supplyControlApi.getSupplyApartments.mockResolvedValue({ data: [apartment] });
     supplyControlApi.getSupplyStandardItems.mockResolvedValue({ data: items });
+    supplyControlApi.getSupplyPhotoRequirements.mockResolvedValue({ data: photoRequirements });
 
     render(<ApartmentSupplyControlPage initialSection="settings" />);
 
@@ -103,5 +134,28 @@ describe("ApartmentSupplyControlPage settings", () => {
 
     expect(await screen.findByRole("heading", { name: "הוספת פריט תקן" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox")).toBeChecked();
+  });
+
+  it("lets the manager edit and deactivate photo requirements", async () => {
+    supplyControlApi.getSupplyApartments.mockResolvedValue({ data: [apartment] });
+    supplyControlApi.getSupplyStandardItems.mockResolvedValue({ data: items });
+    supplyControlApi.getSupplyPhotoRequirements.mockResolvedValue({ data: photoRequirements });
+
+    render(<ApartmentSupplyControlPage initialSection="settings" />);
+
+    await screen.findByText("דרישות תמונות");
+    fireEvent.click(screen.getAllByRole("button", { name: "ערוך" })[1]);
+    expect(await screen.findByRole("heading", { name: "עריכת דרישת תמונה" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "שמור" }));
+
+    await waitFor(() => {
+      expect(supplyControlApi.updateSupplyPhotoRequirement).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "מחק" })[1]);
+    expect(await screen.findByRole("heading", { name: "מחיקת קטגוריית תמונה" })).toBeInTheDocument();
+    expect(screen.getByText("קטגוריית התמונה תוסתר מטופס הדיווח. תמונות ודיווחים קיימים לא יימחקו.")).toBeInTheDocument();
   });
 });

@@ -23,6 +23,7 @@
  * SupplyReports: report_id, apartment_id, reporter_initials, reported_at, general_notes, overall_status
  * SupplyReportItems: report_item_id, report_id, standard_item_id, item_name, required_value, reported_status, actual_value, item_notes
  * SupplyReportPhotos: photo_id, report_id, apartment_id, category, drive_file_id, drive_url, uploaded_at, notes
+ * SupplyPhotoRequirements: photo_requirement_id, apartment_id, category, required, active, notes, created_at, updated_at
  */
 
 const SHEETS = {
@@ -48,6 +49,7 @@ const SUPPLY_SHEETS = {
   REPORTS: "SupplyReports",
   REPORT_ITEMS: "SupplyReportItems",
   REPORT_PHOTOS: "SupplyReportPhotos",
+  PHOTO_REQUIREMENTS: "SupplyPhotoRequirements",
 };
 
 const SUPPLY_CONFIG = {
@@ -133,6 +135,9 @@ function doPost(e) {
     if (action === "supply_get_standard_items") {
       return getSupplyStandardItemsAction_(payload);
     }
+    if (action === "supply_get_photo_requirements") {
+      return getSupplyPhotoRequirementsAction_(payload);
+    }
     if (action === "supply_get_reports_by_apartment") {
       return getSupplyReportsByApartmentAction_(payload);
     }
@@ -168,6 +173,18 @@ function doPost(e) {
     }
     if (action === "supply_deactivate_standard_item") {
       return deactivateSupplyStandardItemAction_(payload);
+    }
+    if (action === "supply_update_photo_requirement") {
+      return updateSupplyPhotoRequirementAction_(payload);
+    }
+    if (action === "supply_create_photo_requirement") {
+      return createSupplyPhotoRequirementAction_(payload);
+    }
+    if (action === "supply_deactivate_photo_requirement") {
+      return deactivateSupplyPhotoRequirementAction_(payload);
+    }
+    if (action === "supply_create_missing_default_photo_requirements") {
+      return createMissingDefaultPhotoRequirementsAction_(payload);
     }
     if (action === "supply_seed_demo_data") {
       return seedSupplyDemoDataAction_();
@@ -890,6 +907,23 @@ function getSupplyStandardItemsAction_(payload) {
   });
 }
 
+function getSupplyPhotoRequirementsAction_(payload) {
+  const apartmentId = String(payload.apartmentId || payload.apartment_id || "").trim();
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (!findSupplyApartmentById_(apartmentId)) {
+    throw new Error("Supply apartment not found");
+  }
+
+  ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentId);
+
+  return jsonResponse_({
+    success: true,
+    data: getSupplyPhotoRequirementsData_(apartmentId),
+  });
+}
+
 function getSupplyReportsByApartmentAction_(payload) {
   const apartmentId = String(payload.apartmentId || "").trim();
   if (!apartmentId) {
@@ -933,6 +967,7 @@ function getSupplyReportingContextAction_(payload) {
     data: {
       apartment: apartment,
       standardItems: getSupplyStandardItemsData_(apartment.apartment_id),
+      photoRequirements: getSupplyPhotoRequirementsData_(apartment.apartment_id),
     },
   });
 }
@@ -954,9 +989,6 @@ function createSupplyReportAction_(payload) {
   }
 
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  if (rawItems.length === 0) {
-    throw new Error("Missing supply report items");
-  }
 
   const standardItems = getSupplyStandardItemsData_(apartmentId);
   const standardItemsById = {};
@@ -1032,9 +1064,6 @@ function updateSupplyReportAction_(payload) {
   }
 
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  if (rawItems.length === 0) {
-    throw new Error("Missing supply report items");
-  }
 
   const standardItems = getSupplyStandardItemsData_(apartmentId);
   const standardItemsById = {};
@@ -1130,6 +1159,7 @@ function uploadSupplyReportPhotosAction_(payload) {
 function createSupplyApartmentAction_(payload) {
   const apartmentRecord = buildSupplyApartmentRecord_(payload);
   appendSupplyRow_(SUPPLY_SHEETS.APARTMENTS, apartmentRecord);
+  ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentRecord.apartment_id);
 
   return jsonResponse_({
     success: true,
@@ -1247,6 +1277,113 @@ function deactivateSupplyStandardItemAction_(payload) {
       standard_item_id: standardItemId,
       active: false,
     },
+  });
+}
+
+function updateSupplyPhotoRequirementAction_(payload) {
+  const photoRequirementId = String(payload.photoRequirementId || payload.photo_requirement_id || "").trim();
+  if (!photoRequirementId) {
+    throw new Error("Missing supply photo requirement ID");
+  }
+
+  const existingRequirement = findSupplyPhotoRequirementRowById_(photoRequirementId);
+  if (!existingRequirement) {
+    throw new Error("Supply photo requirement not found");
+  }
+
+  const nextRecord = buildSupplyPhotoRequirementRecord_(payload, existingRequirement);
+  updateSupplyRowByField_(
+    SUPPLY_SHEETS.PHOTO_REQUIREMENTS,
+    "photo_requirement_id",
+    photoRequirementId,
+    nextRecord
+  );
+
+  return jsonResponse_({
+    success: true,
+    data: normalizeSupplyPhotoRequirementRow_(nextRecord),
+  });
+}
+
+function createSupplyPhotoRequirementAction_(payload) {
+  const apartmentId = String(payload.apartmentId || payload.apartment_id || "").trim();
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (!findSupplyApartmentRowById_(apartmentId)) {
+    throw new Error("Supply apartment not found");
+  }
+
+  const category = stringValue_(payload.category);
+  if (!isAllowedSupplyPhotoCategory_(category)) {
+    throw new Error("Invalid supply photo category");
+  }
+
+  const existingRequirement = findSupplyPhotoRequirementRowByApartmentAndCategory_(apartmentId, category);
+  const nextRecord = buildSupplyPhotoRequirementRecord_(
+    Object.assign({}, payload, { active: true }),
+    existingRequirement || {
+      apartment_id: apartmentId,
+      category: category,
+      active: true,
+      required: true,
+    }
+  );
+
+  if (existingRequirement) {
+    updateSupplyRowByField_(
+      SUPPLY_SHEETS.PHOTO_REQUIREMENTS,
+      "photo_requirement_id",
+      existingRequirement.photo_requirement_id,
+      nextRecord
+    );
+  } else {
+    appendSupplyRow_(SUPPLY_SHEETS.PHOTO_REQUIREMENTS, nextRecord);
+  }
+
+  return jsonResponse_({
+    success: true,
+    data: normalizeSupplyPhotoRequirementRow_(nextRecord),
+  });
+}
+
+function deactivateSupplyPhotoRequirementAction_(payload) {
+  const photoRequirementId = String(payload.photoRequirementId || payload.photo_requirement_id || "").trim();
+  if (!photoRequirementId) {
+    throw new Error("Missing supply photo requirement ID");
+  }
+  if (!findSupplyPhotoRequirementRowById_(photoRequirementId)) {
+    throw new Error("Supply photo requirement not found");
+  }
+
+  updateSupplyRowByField_(SUPPLY_SHEETS.PHOTO_REQUIREMENTS, "photo_requirement_id", photoRequirementId, {
+    active: false,
+    updated_at: nowIsoString_(),
+  });
+
+  return jsonResponse_({
+    success: true,
+    data: {
+      photo_requirement_id: photoRequirementId,
+      active: false,
+    },
+  });
+}
+
+function createMissingDefaultPhotoRequirementsAction_(payload) {
+  const apartmentId = String(payload.apartmentId || payload.apartment_id || "").trim();
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (!findSupplyApartmentById_(apartmentId)) {
+    throw new Error("Supply apartment not found");
+  }
+
+  ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentId);
+
+  return jsonResponse_({
+    success: true,
+    data: getSupplyPhotoRequirementsData_(apartmentId),
   });
 }
 
@@ -2435,6 +2572,10 @@ function getAllSupplyStandardItemRows_() {
   return getSupplyRows_(SUPPLY_SHEETS.STANDARD_ITEMS, ["standard_item_id", "apartment_id"]);
 }
 
+function getAllSupplyPhotoRequirementRows_() {
+  return getSupplyRows_(SUPPLY_SHEETS.PHOTO_REQUIREMENTS, ["photo_requirement_id", "apartment_id", "category"]);
+}
+
 function findSupplyApartmentRowById_(apartmentId) {
   const rows = getAllSupplyApartmentRows_();
 
@@ -2452,6 +2593,35 @@ function findSupplyStandardItemRowById_(standardItemId) {
 
   for (var index = 0; index < rows.length; index++) {
     if (stringValue_(rows[index].standard_item_id) === String(standardItemId)) {
+      return rows[index];
+    }
+  }
+
+  return null;
+}
+
+function findSupplyPhotoRequirementRowById_(photoRequirementId) {
+  const rows = getAllSupplyPhotoRequirementRows_();
+
+  for (var index = 0; index < rows.length; index++) {
+    if (stringValue_(rows[index].photo_requirement_id) === String(photoRequirementId)) {
+      return rows[index];
+    }
+  }
+
+  return null;
+}
+
+function findSupplyPhotoRequirementRowByApartmentAndCategory_(apartmentId, category) {
+  const rows = getAllSupplyPhotoRequirementRows_();
+  const normalizedApartmentId = stringValue_(apartmentId);
+  const normalizedCategory = normalizeSupplyPhotoCategory_(category);
+
+  for (var index = 0; index < rows.length; index++) {
+    if (
+      stringValue_(rows[index].apartment_id) === normalizedApartmentId &&
+      normalizeSupplyPhotoCategory_(rows[index].category) === normalizedCategory
+    ) {
       return rows[index];
     }
   }
@@ -2596,6 +2766,43 @@ function buildSupplyStandardItemRecord_(payload, existingRecord) {
   };
 }
 
+function buildSupplyPhotoRequirementRecord_(payload, existingRecord) {
+  const source = existingRecord || {};
+  const apartmentId = stringValue_(payload.apartment_id || payload.apartmentId || source.apartment_id);
+  const category = stringValue_(payload.category || source.category);
+  const required = payload.required === undefined
+    ? payload.is_required === undefined
+      ? payload.isRequired === undefined
+        ? parseSupplyPhotoRequiredValue_(source.required)
+        : Boolean(payload.isRequired)
+      : Boolean(payload.is_required)
+    : Boolean(payload.required);
+  const active = payload.active === undefined ? parseSupplyActiveValue_(source.active || true) : Boolean(payload.active);
+  const notes = stringValue_(payload.notes !== undefined ? payload.notes : source.notes);
+  const createdAt = stringValue_(source.created_at) || nowIsoString_();
+  const updatedAt = nowIsoString_();
+  const photoRequirementId = stringValue_(payload.photo_requirement_id || payload.photoRequirementId || source.photo_requirement_id)
+    || generateSupplyPhotoRequirementId_(apartmentId, category);
+
+  if (!apartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+  if (!isAllowedSupplyPhotoCategory_(category)) {
+    throw new Error("Invalid supply photo category");
+  }
+
+  return {
+    photo_requirement_id: photoRequirementId,
+    apartment_id: apartmentId,
+    category: category,
+    required: required,
+    active: active,
+    notes: notes,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
 function isAllowedSupplyCategory_(category) {
   const allowedCategories = ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים", "ציוד כללי"];
   return allowedCategories.indexOf(String(category)) !== -1;
@@ -2631,6 +2838,11 @@ function generateSupplyReportItemId_(reportId, standardItemId, itemIndex) {
 
 function generateSupplyPhotoId_() {
   return "photo_" + new Date().getTime() + "_" + Math.floor(Math.random() * 10000);
+}
+
+function generateSupplyPhotoRequirementId_(apartmentId, category) {
+  const normalizedCategory = sanitizeDriveFolderName_(category).replace(/\s+/g, "_").slice(0, 24);
+  return "photo_req_" + String(apartmentId || "apt").slice(0, 20) + "_" + normalizedCategory;
 }
 
 function nowIsoString_() {
@@ -2776,6 +2988,19 @@ function supplySeedItem_(standardItemId, apartmentId, category, itemName, requir
   };
 }
 
+function getDefaultSupplyPhotoRequirementSeeds_(apartmentId) {
+  return ["מקרר", "ציוד ניקוי אקסטרה", "מצעים", "חריגים"].map(function (category) {
+    return {
+      photo_requirement_id: generateSupplyPhotoRequirementId_(apartmentId, category),
+      apartment_id: apartmentId,
+      category: category,
+      required: true,
+      active: true,
+      notes: "",
+    };
+  });
+}
+
 function getSupplyStandardItemsData_(apartmentId) {
   return getSupplyRows_(
     SUPPLY_SHEETS.STANDARD_ITEMS,
@@ -2800,6 +3025,22 @@ function getSupplyStandardItemsData_(apartmentId) {
         return categoryCompare;
       }
       return a.item_name.localeCompare(b.item_name, "he");
+    });
+}
+
+function getSupplyPhotoRequirementsData_(apartmentId) {
+  ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentId);
+
+  return getSupplyRows_(
+    SUPPLY_SHEETS.PHOTO_REQUIREMENTS,
+    ["photo_requirement_id", "apartment_id", "category", "required", "active"]
+  )
+    .map(normalizeSupplyPhotoRequirementRow_)
+    .filter(function (row) {
+      return row.active && row.apartment_id === String(apartmentId);
+    })
+    .sort(function (a, b) {
+      return a.category.localeCompare(b.category, "he");
     });
 }
 
@@ -2862,6 +3103,33 @@ function getSupplyReportDetailsData_(reportId) {
     items: items,
     photos: photos,
   };
+}
+
+function ensureDefaultSupplyPhotoRequirementsForApartment_(apartmentId) {
+  const normalizedApartmentId = stringValue_(apartmentId);
+  if (!normalizedApartmentId) {
+    throw new Error("Missing supply apartment ID");
+  }
+
+  const existingRows = getAllSupplyPhotoRequirementRows_().filter(function (row) {
+    return stringValue_(row.apartment_id) === normalizedApartmentId;
+  });
+  const existingByCategory = {};
+  existingRows.forEach(function (row) {
+    existingByCategory[normalizeSupplyPhotoCategory_(row.category)] = row;
+  });
+
+  getDefaultSupplyPhotoRequirementSeeds_(normalizedApartmentId).forEach(function (seed) {
+    const existingRow = existingByCategory[seed.category];
+    if (existingRow) {
+      return;
+    }
+
+    appendSupplyRow_(
+      SUPPLY_SHEETS.PHOTO_REQUIREMENTS,
+      buildSupplyPhotoRequirementRecord_(seed)
+    );
+  });
 }
 
 function findSupplyApartmentById_(apartmentId) {
@@ -3084,6 +3352,19 @@ function normalizeSupplyReportPhotoRow_(row) {
   };
 }
 
+function normalizeSupplyPhotoRequirementRow_(row) {
+  return {
+    photo_requirement_id: stringValue_(row.photo_requirement_id),
+    apartment_id: stringValue_(row.apartment_id),
+    category: normalizeSupplyPhotoCategory_(row.category),
+    required: parseSupplyPhotoRequiredValue_(row.required),
+    active: parseSupplyActiveValue_(row.active),
+    notes: optionalString_(row.notes),
+    created_at: optionalDateTimeValue_(row.created_at),
+    updated_at: optionalDateTimeValue_(row.updated_at),
+  };
+}
+
 function normalizeSupplyRequiredType_(value) {
   const normalized = stringValue_(value);
   return normalized === "quantity" || normalized === "text" ? normalized : "exists";
@@ -3106,6 +3387,17 @@ function normalizeSupplyPhotoCategory_(value) {
   return normalized === "מקרר" || normalized === "ציוד ניקוי אקסטרה" || normalized === "מצעים" || normalized === "חריגים"
     ? normalized
     : "חריגים";
+}
+
+function parseSupplyPhotoRequiredValue_(value) {
+  if (value === false || value === 0) {
+    return false;
+  }
+  const normalized = stringValue_(value).toLowerCase();
+  if (normalized === "false" || normalized === "0" || normalized === "לא") {
+    return false;
+  }
+  return true;
 }
 
 function isAllowedSupplyPhotoCategory_(value) {
@@ -3158,7 +3450,10 @@ function getSupplyRows_(sheetName, requiredColumns) {
 
 function getSupplySheet_(sheetName) {
   const spreadsheet = getSupplySpreadsheet_();
-  const sheet = spreadsheet.getSheetByName(sheetName);
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet && sheetName === SUPPLY_SHEETS.PHOTO_REQUIREMENTS) {
+    sheet = createSupplyPhotoRequirementsSheet_(spreadsheet);
+  }
   if (!sheet) {
     throw new Error("Supply sheet not found: " + sheetName);
   }
@@ -3232,6 +3527,21 @@ function sanitizeDriveFolderName_(value) {
 
 function buildSupplyDriveViewUrl_(fileId) {
   return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(String(fileId)) + "&sz=w1800";
+}
+
+function createSupplyPhotoRequirementsSheet_(spreadsheet) {
+  const sheet = spreadsheet.insertSheet(SUPPLY_SHEETS.PHOTO_REQUIREMENTS);
+  sheet.appendRow([
+    "photo_requirement_id",
+    "apartment_id",
+    "category",
+    "required",
+    "active",
+    "notes",
+    "created_at",
+    "updated_at",
+  ]);
+  return sheet;
 }
 
 function getScriptPropertyWithFallback_(propertyName, fallbackValue) {

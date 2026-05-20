@@ -31,6 +31,8 @@ import {
   SupplyApartment,
   SupplyApartmentInput,
   SupplyPhotoCategory,
+  SupplyPhotoRequirement,
+  SupplyPhotoRequirementInput,
   SupplyReport,
   SupplyReportDetails,
   SupplyReportPhoto,
@@ -46,8 +48,11 @@ type SettingsModalState =
   | { type: "editApartment"; apartment: SupplyApartment }
   | { type: "createItem"; apartment: SupplyApartment }
   | { type: "editItem"; apartment: SupplyApartment; item: SupplyStandardItem }
+  | { type: "createPhotoRequirement"; apartment: SupplyApartment; category: SupplyPhotoCategory }
+  | { type: "editPhotoRequirement"; apartment: SupplyApartment; requirement: SupplyPhotoRequirement }
   | { type: "deactivateApartment"; apartment: SupplyApartment }
   | { type: "deactivateItem"; apartment: SupplyApartment; item: SupplyStandardItem }
+  | { type: "deactivatePhotoRequirement"; apartment: SupplyApartment; requirement: SupplyPhotoRequirement }
   | null;
 
 const SECTION_LABELS: Record<ApartmentSupplySection, string> = {
@@ -92,6 +97,16 @@ const EMPTY_ITEM_FORM = (apartmentId = ""): SupplyStandardItemInput => ({
   required_value: "",
   required_type: "quantity",
   photo_required: true,
+  notes: "",
+});
+
+const EMPTY_PHOTO_REQUIREMENT_FORM = (
+  apartmentId = "",
+  category: SupplyPhotoCategory = "מקרר",
+): SupplyPhotoRequirementInput => ({
+  apartment_id: apartmentId,
+  category,
+  required: true,
   notes: "",
 });
 
@@ -241,13 +256,16 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
   const [activeSection, setActiveSection] = useState<ApartmentSupplySection>(initialSection);
   const [apartments, setApartments] = useState<SupplyApartment[]>([]);
   const [items, setItems] = useState<SupplyStandardItem[]>([]);
+  const [photoRequirements, setPhotoRequirements] = useState<SupplyPhotoRequirement[]>([]);
   const [selectedApartmentId, setSelectedApartmentId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [settingsModal, setSettingsModal] = useState<SettingsModalState>(null);
   const [apartmentForm, setApartmentForm] = useState<SupplyApartmentInput>(EMPTY_APARTMENT_FORM);
   const [itemForm, setItemForm] = useState<SupplyStandardItemInput>(EMPTY_ITEM_FORM());
+  const [photoRequirementForm, setPhotoRequirementForm] = useState<SupplyPhotoRequirementInput>(EMPTY_PHOTO_REQUIREMENT_FORM());
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [photoRequirementsLoading, setPhotoRequirementsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reportApartments, setReportApartments] = useState<SupplyApartment[]>([]);
@@ -286,6 +304,10 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     [reportApartments, reportSelectedApartmentId],
   );
   const totalReportPages = Math.max(1, Math.ceil(reportsTotal / 30));
+  const missingPhotoCategories = useMemo(
+    () => PHOTO_CATEGORY_ORDER.filter((category) => !photoRequirements.some((requirement) => requirement.category === category)),
+    [photoRequirements],
+  );
 
   async function loadApartments(preferredApartmentId?: string) {
     setSettingsLoading(true);
@@ -332,6 +354,29 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
 
     setItems(result.data);
     setItemsLoading(false);
+  }
+
+  async function loadPhotoRequirements(apartmentId: string) {
+    if (!apartmentId) {
+      setPhotoRequirements([]);
+      return;
+    }
+
+    setPhotoRequirementsLoading(true);
+    const result = await supplyControlApi.getSupplyPhotoRequirements(apartmentId);
+    if (!result.data) {
+      setPhotoRequirements([]);
+      toast({
+        variant: "destructive",
+        title: "שגיאה בטעינת דרישות התמונות",
+        description: result.error || "לא ניתן לטעון את קטגוריות התמונות לדירה",
+      });
+      setPhotoRequirementsLoading(false);
+      return;
+    }
+
+    setPhotoRequirements(result.data);
+    setPhotoRequirementsLoading(false);
   }
 
   async function loadReportApartments(preferredApartmentId?: string) {
@@ -441,6 +486,11 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
   }, [activeSection, selectedApartmentId]);
 
   useEffect(() => {
+    if (activeSection !== "settings") return;
+    void loadPhotoRequirements(selectedApartmentId);
+  }, [activeSection, selectedApartmentId]);
+
+  useEffect(() => {
     if (activeSection !== "reports") return;
     void loadReportApartments();
   }, [activeSection]);
@@ -487,6 +537,22 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       active: item.active,
     });
     setSettingsModal({ type: "editItem", apartment, item });
+  }
+
+  function openCreatePhotoRequirementModal(apartment: SupplyApartment, category: SupplyPhotoCategory) {
+    setPhotoRequirementForm(EMPTY_PHOTO_REQUIREMENT_FORM(apartment.apartment_id, category));
+    setSettingsModal({ type: "createPhotoRequirement", apartment, category });
+  }
+
+  function openEditPhotoRequirementModal(apartment: SupplyApartment, requirement: SupplyPhotoRequirement) {
+    setPhotoRequirementForm({
+      apartment_id: apartment.apartment_id,
+      category: requirement.category,
+      required: requirement.required,
+      notes: requirement.notes ?? "",
+      active: requirement.active,
+    });
+    setSettingsModal({ type: "editPhotoRequirement", apartment, requirement });
   }
 
   async function handleSaveApartment() {
@@ -578,6 +644,49 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
     setIsSaving(false);
   }
 
+  async function handleSavePhotoRequirement() {
+    const payload: SupplyPhotoRequirementInput = {
+      apartment_id: photoRequirementForm.apartment_id,
+      category: photoRequirementForm.category,
+      required: photoRequirementForm.required,
+      notes: photoRequirementForm.notes?.trim() ?? "",
+    };
+
+    if (!payload.apartment_id || !payload.category) {
+      toast({
+        variant: "destructive",
+        title: "שדות חסרים",
+        description: "יש לבחור דירה וקטגוריית תמונה",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    const result =
+      settingsModal?.type === "editPhotoRequirement"
+        ? await supplyControlApi.updateSupplyPhotoRequirement(settingsModal.requirement.photo_requirement_id, payload)
+        : await supplyControlApi.createSupplyPhotoRequirement(payload);
+
+    if (!result.data) {
+      toast({
+        variant: "destructive",
+        title: "שמירת דרישת התמונה נכשלה",
+        description: result.error || "לא ניתן לשמור את דרישת התמונה",
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    await loadPhotoRequirements(payload.apartment_id);
+    setSettingsModal(null);
+    toast({
+      title: settingsModal?.type === "editPhotoRequirement" ? "דרישת התמונה עודכנה" : "קטגוריית התמונה נוספה",
+      description: result.data.category,
+    });
+    setIsSaving(false);
+  }
+
   async function handleDeactivate() {
     if (!settingsModal) return;
 
@@ -600,6 +709,30 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       toast({
         title: "הדירה הוסתרה",
         description: settingsModal.apartment.location,
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    if (settingsModal.type === "deactivatePhotoRequirement") {
+      const photoRequirementResult = await supplyControlApi.deactivateSupplyPhotoRequirement(
+        settingsModal.requirement.photo_requirement_id,
+      );
+      if (!photoRequirementResult.data) {
+        toast({
+          variant: "destructive",
+          title: "מחיקת קטגוריית התמונה נכשלה",
+          description: photoRequirementResult.error || "לא ניתן להסתיר את קטגוריית התמונה",
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      await loadPhotoRequirements(settingsModal.apartment.apartment_id);
+      setSettingsModal(null);
+      toast({
+        title: "קטגוריית התמונה הוסתרה",
+        description: settingsModal.requirement.category,
       });
       setIsSaving(false);
       return;
@@ -703,6 +836,50 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
               event.stopPropagation();
               if (selectedApartment) {
                 setSettingsModal({ type: "deactivateItem", apartment: selectedApartment, item });
+              }
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-status-danger-text hover:bg-destructive/5"
+          >
+            <Trash2 size={12} />
+            מחק
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const photoRequirementColumns = [
+    { key: "category", header: "קטגוריה" },
+    {
+      key: "required",
+      header: "חובה",
+      render: (requirement: SupplyPhotoRequirement) => (requirement.required ? "כן" : "לא"),
+    },
+    {
+      key: "actions",
+      header: "פעולות",
+      className: "w-[10rem]",
+      render: (requirement: SupplyPhotoRequirement) => (
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (selectedApartment) {
+                openEditPhotoRequirementModal(selectedApartment, requirement);
+              }
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
+          >
+            <Pencil size={12} />
+            ערוך
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (selectedApartment) {
+                setSettingsModal({ type: "deactivatePhotoRequirement", apartment: selectedApartment, requirement });
               }
             }}
             className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-status-danger-text hover:bg-destructive/5"
@@ -1086,6 +1263,53 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                       )}
                     </CardContent>
                   </Card>
+
+                  <Card className="shadow-card">
+                    <CardHeader className="gap-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <CardTitle className="text-base">דרישות תמונות</CardTitle>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            ניהול קטגוריות הצילום שיופיעו בטופס הדיווח של הדירה.
+                          </p>
+                        </div>
+                        {selectedApartment && !photoRequirementsLoading && missingPhotoCategories.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {missingPhotoCategories.map((category) => (
+                              <button
+                                key={category}
+                                type="button"
+                                onClick={() => openCreatePhotoRequirementModal(selectedApartment, category)}
+                                className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                              >
+                                <Plus size={14} />
+                                הוסף {category}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {!selectedApartment ? (
+                        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                          בחר דירה כדי לנהל את דרישות התמונות שלה.
+                        </div>
+                      ) : photoRequirementsLoading ? (
+                        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                          טוען דרישות תמונות...
+                        </div>
+                      ) : (
+                        <DataTable
+                          columns={photoRequirementColumns}
+                          data={photoRequirements}
+                          rowKey={(item) => item.photo_requirement_id}
+                          emptyMessage="אין כרגע דרישות תמונות פעילות לדירה זו"
+                          minWidthClassName="min-w-[28rem]"
+                        />
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             </TabsContent>
@@ -1164,38 +1388,44 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
                 <CardTitle className="text-base">צ׳ק ליסט אספקה</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                {groupReportItemsByCategory(selectedReportDetails.items, selectedReportStandardItems).map(([category, categoryItems]) => (
-                  <div key={category} className="space-y-3">
-                    <div className="text-sm font-semibold text-foreground">{category}</div>
-                    <div className="space-y-3">
-                      {categoryItems.map((item) => (
-                        <div key={item.report_item_id} className="rounded-xl border border-border p-4">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                              <div className="font-medium text-foreground">{item.item_name}</div>
-                              <div className="mt-1 text-sm text-muted-foreground">
-                                ערך נדרש: {item.required_value || "קיים"}
+                {selectedReportDetails.items.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                    לא דווחו פריטי אספקה בדוח זה
+                  </div>
+                ) : (
+                  groupReportItemsByCategory(selectedReportDetails.items, selectedReportStandardItems).map(([category, categoryItems]) => (
+                    <div key={category} className="space-y-3">
+                      <div className="text-sm font-semibold text-foreground">{category}</div>
+                      <div className="space-y-3">
+                        {categoryItems.map((item) => (
+                          <div key={item.report_item_id} className="rounded-xl border border-border p-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <div className="font-medium text-foreground">{item.item_name}</div>
+                                <div className="mt-1 text-sm text-muted-foreground">
+                                  ערך נדרש: {item.required_value || "קיים"}
+                                </div>
+                              </div>
+                              <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                                {REPORTED_STATUS_LABELS[item.reported_status]}
                               </div>
                             </div>
-                            <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                              {REPORTED_STATUS_LABELS[item.reported_status]}
-                            </div>
+                            {item.actual_value && (
+                              <div className="mt-3 text-sm text-foreground">
+                                <span className="font-medium">מה נמצא בפועל:</span> {item.actual_value}
+                              </div>
+                            )}
+                            {item.item_notes && (
+                              <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                                <span className="font-medium text-foreground">הערה:</span> {item.item_notes}
+                              </div>
+                            )}
                           </div>
-                          {item.actual_value && (
-                            <div className="mt-3 text-sm text-foreground">
-                              <span className="font-medium">מה נמצא בפועל:</span> {item.actual_value}
-                            </div>
-                          )}
-                          {item.item_notes && (
-                            <div className="mt-2 text-sm leading-6 text-muted-foreground">
-                              <span className="font-medium text-foreground">הערה:</span> {item.item_notes}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
 
@@ -1431,15 +1661,87 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
       </Modal>
 
       <Modal
-        open={settingsModal?.type === "deactivateApartment" || settingsModal?.type === "deactivateItem"}
+        open={settingsModal?.type === "createPhotoRequirement" || settingsModal?.type === "editPhotoRequirement"}
         onClose={() => !isSaving && setSettingsModal(null)}
-        title={settingsModal?.type === "deactivateApartment" ? "מחיקת דירה" : "מחיקת פריט"}
+        title={settingsModal?.type === "editPhotoRequirement" ? "עריכת דרישת תמונה" : "הוספת קטגוריית תמונה"}
+      >
+        <div className="space-y-4">
+          <FormField label="קטגוריה">
+            <select
+              value={photoRequirementForm.category}
+              onChange={(event) =>
+                setPhotoRequirementForm((current) => ({ ...current, category: event.target.value as SupplyPhotoCategory }))
+              }
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              disabled={settingsModal?.type === "createPhotoRequirement"}
+            >
+              {PHOTO_CATEGORY_ORDER.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <label className="flex items-center justify-between rounded-md border border-border bg-muted/20 px-4 py-3 text-sm">
+            <span className="font-medium text-foreground">חובה בטופס הדיווח</span>
+            <input
+              type="checkbox"
+              checked={photoRequirementForm.required}
+              onChange={(event) =>
+                setPhotoRequirementForm((current) => ({ ...current, required: event.target.checked }))
+              }
+              className="h-4 w-4 rounded border-border"
+            />
+          </label>
+          <FormField label="הערות">
+            <textarea
+              value={photoRequirementForm.notes ?? ""}
+              onChange={(event) => setPhotoRequirementForm((current) => ({ ...current, notes: event.target.value }))}
+              className="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setSettingsModal(null)}
+              className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-muted"
+            >
+              ביטול
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSavePhotoRequirement()}
+              disabled={isSaving}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+            >
+              {isSaving ? "שומר..." : "שמור"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={
+          settingsModal?.type === "deactivateApartment" ||
+          settingsModal?.type === "deactivateItem" ||
+          settingsModal?.type === "deactivatePhotoRequirement"
+        }
+        onClose={() => !isSaving && setSettingsModal(null)}
+        title={
+          settingsModal?.type === "deactivateApartment"
+            ? "מחיקת דירה"
+            : settingsModal?.type === "deactivatePhotoRequirement"
+              ? "מחיקת קטגוריית תמונה"
+              : "מחיקת פריט"
+        }
         width="max-w-md"
       >
         <div className="space-y-4 text-sm">
           <p className="leading-6 text-muted-foreground">
             {settingsModal?.type === "deactivateApartment"
               ? "הדירה תוסתר מהמערכת ולא תופיע בדיווחים חדשים. הנתונים והדיווחים הקיימים לא יימחקו."
+              : settingsModal?.type === "deactivatePhotoRequirement"
+                ? "קטגוריית התמונה תוסתר מטופס הדיווח. תמונות ודיווחים קיימים לא יימחקו."
               : settingsModal?.type === "deactivateItem"
                 ? `הפריט יוסתר מהתקן הפעיל של הדירה "${settingsModal.apartment.location}" בלי למחוק דיווחים קיימים.`
                 : ""}
@@ -1458,7 +1760,11 @@ export const ApartmentSupplyControlPage: React.FC<ApartmentSupplyControlPageProp
               disabled={isSaving}
               className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-60"
             >
-              {isSaving ? "שומר..." : settingsModal?.type === "deactivateApartment" ? "מחק דירה" : "מחק"}
+              {isSaving
+                ? "שומר..."
+                : settingsModal?.type === "deactivateApartment"
+                  ? "מחק דירה"
+                  : "מחק"}
             </button>
           </div>
         </div>

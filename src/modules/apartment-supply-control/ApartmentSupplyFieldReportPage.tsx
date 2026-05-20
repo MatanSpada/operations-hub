@@ -210,11 +210,15 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
     () => groupItemsByCategory(context?.standardItems || []),
     [context],
   );
+  const activePhotoCategories = useMemo(
+    () => (context?.photoRequirements || []).map((requirement) => requirement.category),
+    [context],
+  );
   const requiredPhotoCategories = useMemo(() => {
     const categories = new Set<SupplyPhotoCategory>();
-    (context?.standardItems || []).forEach((item) => {
-      if (item.photo_required && PHOTO_CATEGORIES.includes(item.category as SupplyPhotoCategory)) {
-        categories.add(item.category as SupplyPhotoCategory);
+    (context?.photoRequirements || []).forEach((requirement) => {
+      if (requirement.required && PHOTO_CATEGORIES.includes(requirement.category)) {
+        categories.add(requirement.category);
       }
     });
     return categories;
@@ -606,81 +610,94 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
           </CardContent>
         </Card>
 
-        {groupedItems.map(([category, items]) => (
-          <Card key={category} className="shadow-card">
+        {groupedItems.length === 0 ? (
+          <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-lg">{category}</CardTitle>
+              <CardTitle className="text-lg">צ׳ק ליסט אספקה</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {items.map((item) => {
-                const state = itemStates[item.standard_item_id] || {
-                  reported_status: "ok" as const,
-                  actual_value: "",
-                  item_notes: "",
-                };
-
-                return (
-                  <div key={item.standard_item_id} className="rounded-xl border border-border p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1">
-                        <div className="font-semibold text-foreground">{item.item_name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          נדרש: {formatRequiredValue(item)} · סוג דרישה: {REQUIRED_TYPE_LABELS[item.required_type]}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {STATUS_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            aria-pressed={state.reported_status === option.value}
-                            onClick={() => updateItemState(item.standard_item_id, { reported_status: option.value })}
-                            className={cn(
-                              "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                              state.reported_status === option.value
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border bg-background text-muted-foreground hover:bg-muted/50",
-                            )}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {state.reported_status === "partial" && (
-                      <label className="mt-4 flex flex-col gap-2 text-sm">
-                        <span className="font-medium">מה נמצא בפועל?</span>
-                        <input
-                          value={state.actual_value}
-                          onChange={(event) =>
-                            updateItemState(item.standard_item_id, { actual_value: event.target.value })
-                          }
-                          className="h-11 rounded-md border border-input bg-background px-3 text-right"
-                          placeholder="לדוגמה: 2 מתוך 4"
-                        />
-                      </label>
-                    )}
-
-                    {(state.reported_status === "missing" || state.reported_status === "partial") && (
-                      <label className="mt-4 flex flex-col gap-2 text-sm">
-                        <span className="font-medium">הערה לפריט</span>
-                        <textarea
-                          value={state.item_notes}
-                          onChange={(event) =>
-                            updateItemState(item.standard_item_id, { item_notes: event.target.value })
-                          }
-                          className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-right"
-                          placeholder="תיאור קצר של החוסר או הבעיה"
-                        />
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
+            <CardContent>
+              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                לא הוגדרו פריטי אספקה קבועים לדירה זו. אפשר עדיין לשלוח דיווח עם תמונות והערות.
+              </div>
             </CardContent>
           </Card>
-        ))}
+        ) : (
+          groupedItems.map(([category, items]) => (
+            <Card key={category} className="shadow-card">
+              <CardHeader>
+                <CardTitle className="text-lg">{category}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {items.map((item) => {
+                  const state = itemStates[item.standard_item_id] || {
+                    reported_status: "ok" as const,
+                    actual_value: "",
+                    item_notes: "",
+                  };
+
+                  return (
+                    <div key={item.standard_item_id} className="rounded-xl border border-border p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-foreground">{item.item_name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            נדרש: {formatRequiredValue(item)} · סוג דרישה: {REQUIRED_TYPE_LABELS[item.required_type]}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {STATUS_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              aria-pressed={state.reported_status === option.value}
+                              onClick={() => updateItemState(item.standard_item_id, { reported_status: option.value })}
+                              className={cn(
+                                "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                                state.reported_status === option.value
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border bg-background text-muted-foreground hover:bg-muted/50",
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {state.reported_status === "partial" && (
+                        <label className="mt-4 flex flex-col gap-2 text-sm">
+                          <span className="font-medium">מה נמצא בפועל?</span>
+                          <input
+                            value={state.actual_value}
+                            onChange={(event) =>
+                              updateItemState(item.standard_item_id, { actual_value: event.target.value })
+                            }
+                            className="h-11 rounded-md border border-input bg-background px-3 text-right"
+                            placeholder="לדוגמה: 2 מתוך 4"
+                          />
+                        </label>
+                      )}
+
+                      {(state.reported_status === "missing" || state.reported_status === "partial") && (
+                        <label className="mt-4 flex flex-col gap-2 text-sm">
+                          <span className="font-medium">הערה לפריט</span>
+                          <textarea
+                            value={state.item_notes}
+                            onChange={(event) =>
+                              updateItemState(item.standard_item_id, { item_notes: event.target.value })
+                            }
+                            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-right"
+                            placeholder="תיאור קצר של החוסר או הבעיה"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          ))
+        )}
 
         <Card className="shadow-card">
           <CardHeader>
@@ -691,7 +708,7 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
               ניתן לצרף תמונות להוכחת מילוי האספקה. קטגוריות שמסומנות כחובה מחייבות לפחות תמונה אחת.
             </div>
 
-            {PHOTO_CATEGORIES.map((category) => (
+            {activePhotoCategories.map((category) => (
               <div key={category} className="space-y-3 rounded-xl border border-border p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <ImagePlus size={16} className="text-muted-foreground" />
