@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildSupplyPhotoDisplayUrl,
   getSupplyPhotoDisplayUrl,
+  isSupplyPhotoRequired,
   isSupplyRowActive,
   mapSheetRowsByHeaders,
   normalizeSupplyReportDetails,
+  normalizeSupplyStandardItem,
   normalizeSupplyReportsByApartment,
 } from "@/modules/apartment-supply-control/normalize";
 
@@ -32,6 +34,44 @@ describe("apartment supply control normalization", () => {
     expect(isSupplyRowActive(1)).toBe(true);
     expect(isSupplyRowActive("FALSE")).toBe(false);
     expect(isSupplyRowActive("0")).toBe(false);
+  });
+
+  it("treats photo_required as true unless it is explicitly false", () => {
+    expect(isSupplyPhotoRequired(undefined)).toBe(true);
+    expect(isSupplyPhotoRequired("")).toBe(true);
+    expect(isSupplyPhotoRequired("TRUE")).toBe(true);
+    expect(isSupplyPhotoRequired("yes")).toBe(true);
+    expect(isSupplyPhotoRequired(false)).toBe(false);
+    expect(isSupplyPhotoRequired("false")).toBe(false);
+    expect(isSupplyPhotoRequired("FALSE")).toBe(false);
+    expect(isSupplyPhotoRequired(0)).toBe(false);
+    expect(isSupplyPhotoRequired("0")).toBe(false);
+    expect(isSupplyPhotoRequired("לא")).toBe(false);
+  });
+
+  it("normalizes standard items with missing photo_required as required", () => {
+    expect(
+      normalizeSupplyStandardItem({
+        standard_item_id: "std-1",
+        apartment_id: "apt-1",
+        category: "מקרר",
+        item_name: "מקרר",
+        required_type: "exists",
+        active: "TRUE",
+      }).photo_required,
+    ).toBe(true);
+
+    expect(
+      normalizeSupplyStandardItem({
+        standard_item_id: "std-2",
+        apartment_id: "apt-1",
+        category: "מקרר",
+        item_name: "מקרר",
+        required_type: "exists",
+        photo_required: "FALSE",
+        active: "TRUE",
+      }).photo_required,
+    ).toBe(false);
   });
 
   it("sorts reports newest first and applies the default limit of 30", () => {

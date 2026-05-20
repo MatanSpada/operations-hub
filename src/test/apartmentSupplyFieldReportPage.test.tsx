@@ -124,6 +124,8 @@ describe("ApartmentSupplyFieldReportPage", () => {
     expect(screen.getByText("ורד")).toBeInTheDocument();
     expect(screen.getByText("מיטה")).toBeInTheDocument();
     expect(screen.getAllByText("מקרר").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("(חובה)")).toHaveLength(1);
+    expect(screen.getByText("ציוד ניקוי אקסטרה")).toBeInTheDocument();
   });
 
   it("requires reporter initials before submit", async () => {

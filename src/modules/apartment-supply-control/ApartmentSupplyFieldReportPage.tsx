@@ -697,8 +697,8 @@ export const ApartmentSupplyFieldReportPage: React.FC<FieldReportPageProps> = ({
                   <ImagePlus size={16} className="text-muted-foreground" />
                   <div className="font-medium text-foreground">{category}</div>
                   {requiredPhotoCategories.has(category) && (
-                    <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-status-danger-text">
-                      חובה
+                    <span className="text-sm font-medium text-status-danger-text">
+                      (חובה)
                     </span>
                   )}
                 </div>

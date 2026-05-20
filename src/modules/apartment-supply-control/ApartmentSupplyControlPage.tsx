@@ -91,7 +91,7 @@ const EMPTY_ITEM_FORM = (apartmentId = ""): SupplyStandardItemInput => ({
   item_name: "",
   required_value: "",
   required_type: "quantity",
-  photo_required: false,
+  photo_required: true,
   notes: "",
 });
 
