@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApartmentSupplyControlPage } from "@/modules/apartment-supply-control/ApartmentSupplyControlPage";
 import { SupplyApartment, SupplyStandardItem } from "@/types";
 
@@ -90,5 +90,18 @@ describe("ApartmentSupplyControlPage settings", () => {
     expect(screen.getByRole("button", { name: "העתק קישור" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "פתח טופס דיווח" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(/supplyReportToken=/)).toBeInTheDocument();
+  });
+
+  it("defaults new standard items to required photos", async () => {
+    supplyControlApi.getSupplyApartments.mockResolvedValue({ data: [apartment] });
+    supplyControlApi.getSupplyStandardItems.mockResolvedValue({ data: items });
+
+    render(<ApartmentSupplyControlPage initialSection="settings" />);
+
+    await screen.findByText("מיטה");
+    fireEvent.click(screen.getByRole("button", { name: "הוסף פריט" }));
+
+    expect(await screen.findByRole("heading", { name: "הוספת פריט תקן" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeChecked();
   });
 });

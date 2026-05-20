@@ -121,6 +121,17 @@ export function isSupplyRowActive(value: unknown): boolean {
   return false;
 }
 
+export function isSupplyPhotoRequired(value: unknown): boolean {
+  if (value === false || value === 0) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "false" || normalized === "0" || normalized === "לא") {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function normalizeSupplyApartment(row: RawRow): SupplyApartment {
   return {
     apartment_id: readString(row, ["apartment_id", "ApartmentID", "ApartmentId"]),
@@ -143,7 +154,7 @@ export function normalizeSupplyStandardItem(row: RawRow): SupplyStandardItem {
     item_name: readString(row, ["item_name", "ItemName"]),
     required_value: readOptionalString(row, ["required_value", "RequiredValue"]),
     required_type: normalizeRequiredType(readValue(row, ["required_type", "RequiredType"])),
-    photo_required: isSupplyRowActive(readValue(row, ["photo_required", "PhotoRequired"])),
+    photo_required: isSupplyPhotoRequired(readValue(row, ["photo_required", "PhotoRequired"])),
     active: isSupplyRowActive(readValue(row, ["active", "Active"])),
     notes: readOptionalString(row, ["notes", "Notes"]),
   };
